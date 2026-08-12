@@ -2,7 +2,7 @@ require('dotenv').config();
 const db = require('./db/db');
 const { TRADING_CONFIG } = require('./config/exchange');
 const { fetchMarketData, getCurrentPrice } = require('./data/fetcher');
-const { checkEntrySignal } = require('./strategy/indicator');
+const { checkEntrySignal, getEntryPlan, STRATEGY_CONFIG } = require('./strategy/indicator');
 const { executeDummyBuy, executeDummySell } = require('./engine/paperTrade');
 const { sendTelegramMessage } = require('./utils/telegram');
 
@@ -15,6 +15,8 @@ console.log(`Symbol: ${TRADING_CONFIG.symbol}`);
 console.log(`Timeframe: ${TRADING_CONFIG.timeframe}`);
 console.log('Exchange: Binance (Public)');
 console.log(`Scan interval: ${SCAN_INTERVAL_MS / 1000}s`);
+console.log(`Strategy: RSI(${STRATEGY_CONFIG.rsiPeriod})<${STRATEGY_CONFIG.rsiOversold} + Price<=EMA(${STRATEGY_CONFIG.emaPeriod})`);
+console.log(`Risk/Reward: RR 1:${STRATEGY_CONFIG.rrRatio} | SL ${STRATEGY_CONFIG.riskPercent * 100}%`);
 console.log('-----------------------------------------');
 
 // Check active OPEN positions and close any that hit TP or SL
@@ -53,13 +55,7 @@ async function monitorOpenPositions(currentPrice) {
 }
 
 // Check for a fresh entry signal and open a new position
-async function checkEntry(currentPrice) {
-    const candles = await fetchMarketData(100);
-    if (candles.length === 0) {
-        console.warn('[ENTRY] Data OHLCV kosong, lewati analisa.');
-        return;
-    }
-
+async function checkEntry(currentPrice, candles) {
     const signal = checkEntrySignal(candles);
     if (!signal) return;
 
@@ -86,9 +82,9 @@ async function checkEntry(currentPrice) {
             `🟢 <b>Entry Signal Terdeteksi</b>\n` +
             `Pair: <b>${TRADING_CONFIG.symbol}</b>\n` +
             `Harga Entry: <code>${signal.entryPrice}</code>\n` +
-            `RSI: <code>${signal.rsi.toFixed(2)}</code>\n` +
-            `Target TP: <code>${signal.targetTp.toFixed(2)}</code>\n` +
-            `Target SL: <code>${signal.targetSl.toFixed(2)}</code>`
+            `TP: <code>${signal.targetTp.toFixed(2)}</code> | SL: <code>${signal.targetSl.toFixed(2)}</code>\n` +
+            `RSI: <code>${signal.rsi.toFixed(2)}</code> | EMA: <code>${signal.ema.toFixed(2)}</code>\n` +
+            `Plan: Entry ${signal.entryPrice.toFixed(2)} -> TP ${signal.targetTp.toFixed(2)}`
         );
     }
 }
@@ -96,11 +92,30 @@ async function checkEntry(currentPrice) {
 // Main trading loop: monitor positions, then look for new entries
 async function mainLoop() {
     try {
+        // Log market check at the start of each cycle
+        const time = new Date().toLocaleTimeString();
+
         const currentPrice = await getCurrentPrice();
-        if (currentPrice === null) return;
+        if (currentPrice === null) {
+            console.log(`🔄 [${time}] ${TRADING_CONFIG.symbol} | Fetch failed, skipping cycle...`);
+            return;
+        }
+
+        const candles = await fetchMarketData(100);
+        const strategyTag = `RSI<${STRATEGY_CONFIG.rsiOversold}+EMA${STRATEGY_CONFIG.emaPeriod} | RR 1:${STRATEGY_CONFIG.rrRatio}`;
+
+        if (candles.length === 0) {
+            console.log(`🔄 [${time}] Checking ${TRADING_CONFIG.symbol} | Price: ${currentPrice} | ${strategyTag}`);
+            return;
+        }
+
+        const plan = getEntryPlan(candles);
+        const entryText = plan ? `Entry plan: ${plan.entryPrice.toFixed(2)}` : 'Entry plan: n/a';
+
+        console.log(`🔄 [${time}] Checking ${TRADING_CONFIG.symbol} | Price: ${currentPrice} | ${entryText} | ${strategyTag}`);
 
         await monitorOpenPositions(currentPrice);
-        await checkEntry(currentPrice);
+        await checkEntry(currentPrice, candles);
     } catch (error) {
         console.error('❌ Error pada main loop:', error.message);
     }

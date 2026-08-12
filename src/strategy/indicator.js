@@ -1,14 +1,27 @@
 const { RSI, EMA } = require('technicalindicators');
 
-// Configurable strategy parameters
+// Strategy parameters read from .env with safe defaults (not hot-swappable — loads at require-time)
 const STRATEGY_CONFIG = {
-    rsiPeriod: 14,
-    emaPeriod: 20,
-    rsiOversold: 30,   // Entry signal: RSI below this -> oversold buy
-    rsiOverbought: 70, // (Reserved for potential sell signal)
-    riskPercent: 0.01, // Stop Loss = 1% below entry
-    rrRatio: 2,        // Take Profit = 2x the risk (1:2 R:R)
+    rsiPeriod: Number(process.env.RSI_PERIOD) || 14,
+    emaPeriod: Number(process.env.EMA_PERIOD) || 20,
+    rsiOversold: Number(process.env.RSI_OVERSOLD) || 30,   // Entry signal: RSI below this -> oversold buy
+    rsiOverbought: Number(process.env.RSI_OVERBOUGHT) || 70, // (Reserved for potential sell signal)
+    riskPercent: Number(process.env.RISK_PERCENT) || 0.01, // Stop Loss = 1% below entry
+    rrRatio: Number(process.env.RR_RATIO) || 2,            // Take Profit = 2x the risk (1:2 R:R)
 };
+
+// Compute the current planned entry/exit targets from the latest close (no signal required)
+// Returns { entryPrice, targetTp, targetSl } as a preview of where an entry would trigger
+function getEntryPlan(candles) {
+    if (!Array.isArray(candles) || candles.length === 0) return null;
+
+    const entryPrice = candles[candles.length - 1].close;
+    const stopLoss = entryPrice * (1 - STRATEGY_CONFIG.riskPercent);
+    const riskPerUnit = entryPrice - stopLoss;
+    const takeProfit = entryPrice + riskPerUnit * STRATEGY_CONFIG.rrRatio;
+
+    return { entryPrice, targetTp: takeProfit, targetSl: stopLoss };
+}
 
 // Extract closing prices from OHLCV candle objects
 function getClosingPrices(candles) {
@@ -77,5 +90,6 @@ function checkEntrySignal(candles) {
 module.exports = {
     calculateIndicators,
     checkEntrySignal,
+    getEntryPlan,
     STRATEGY_CONFIG,
 };
