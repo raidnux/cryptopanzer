@@ -1,0 +1,22 @@
+{
+  "name": "cryptopanzer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "ccxt": "^4.5.73",
+    "dotenv": "^17.4.2",
+    "node-telegram-bot-api": "^1.2.0",
+    "technicalindicators": "^3.1.0"
+  }
+}
