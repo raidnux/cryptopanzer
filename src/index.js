@@ -2,7 +2,7 @@ require('dotenv').config();
 const db = require('./db/db');
 const { TRADING_CONFIG } = require('./config/exchange');
 const { fetchMarketData, getCurrentPrice } = require('./data/fetcher');
-const { checkEntrySignal, getEntryPlan, STRATEGY_CONFIG } = require('./strategy/indicator');
+const { checkEntrySignal, calculateIndicators, STRATEGY_CONFIG } = require('./strategy/indicator');
 const { executeDummyBuy, executeDummySell } = require('./engine/paperTrade');
 const { sendTelegramMessage } = require('./utils/telegram');
 
@@ -109,10 +109,16 @@ async function mainLoop() {
             return;
         }
 
-        const plan = getEntryPlan(candles);
-        const entryText = plan ? `Entry plan: ${plan.entryPrice.toFixed(2)}` : 'Entry plan: n/a';
+        // Compute live RSI/EMA so we can see how close we are to a signal
+        let indicatorText = 'Indicators: n/a';
+        try {
+            const ind = calculateIndicators(candles);
+            indicatorText = `RSI: ${ind.rsi.toFixed(2)} | EMA: ${ind.ema.toFixed(2)}`;
+        } catch (err) {
+            // candles too short — fall back gracefully
+        }
 
-        console.log(`🔄 [${time}] Checking ${TRADING_CONFIG.symbol} | Price: ${currentPrice} | ${entryText} | ${strategyTag}`);
+        console.log(`🔄 [${time}] Checking ${TRADING_CONFIG.symbol} | Price: ${currentPrice} | ${indicatorText} | ${strategyTag}`);
 
         await monitorOpenPositions(currentPrice);
         await checkEntry(currentPrice, candles);
