@@ -8,6 +8,28 @@ const { sendTelegramMessage } = require('./utils/telegram');
 
 const SCAN_INTERVAL_MS = 60 * 1000; // 1 menit
 
+// Show CLI usage and exit before the bot starts (also skips Telegram polling)
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    console.log(`
+=========================================
+🚀 CryptoPanzer Bot - Help
+=========================================
+Usage:
+  node src/index.js               Start the bot (default)
+  node src/index.js --report      Print trade report and exit
+  node src/index.js --help (-h)   Show this help
+=========================================
+`);
+    process.exit(0);
+}
+
+// Format: 2026-08-13 06:42:13
+function formatTimestamp(date = new Date()) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+        `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 console.log('=========================================');
 console.log('🚀 CryptoPanzer Bot - Paper Trading Init');
 console.log('=========================================');
@@ -93,7 +115,7 @@ async function checkEntry(currentPrice, candles) {
 async function mainLoop() {
     try {
         // Log market check at the start of each cycle
-        const time = new Date().toLocaleTimeString();
+        const time = formatTimestamp();
 
         const currentPrice = await getCurrentPrice();
         if (currentPrice === null) {
@@ -140,11 +162,61 @@ process.on('SIGTERM', shutdown);
 
 let interval;
 
+// CLI trade report: closed trades + PnL summary + open positions + wallet
+function printTradeReport() {
+    console.log('\n=========================================');
+    console.log('📋 TRADE REPORT');
+    console.log('=========================================');
+
+    const history = db.prepare('SELECT * FROM trade_history ORDER BY id').all();
+    if (history.length === 0) {
+        console.log('📄 Belum ada trade history (belum ada posisi yang ditutup).');
+    } else {
+        console.log('--- Closed Trades (trade_history) ---');
+        for (const t of history) {
+            const result = t.profit_loss >= 0 ? '✅ WIN' : '❌ LOSS';
+            console.log(
+                `#${t.id} ${t.pair} | Buy: ${t.buy_price} | Sell: ${t.sell_price} | ` +
+                `PnL: ${t.profit_loss.toFixed(4)} USDT | ${t.close_reason} | ${t.timestamp} | ${result}`
+            );
+        }
+
+        const total = history.reduce((sum, t) => sum + t.profit_loss, 0);
+        const wins = history.filter((t) => t.profit_loss >= 0).length;
+        const losses = history.length - wins;
+        const winRate = history.length > 0 ? ((wins / history.length) * 100).toFixed(1) : '0.0';
+
+        console.log('\n--- PnL Summary ---');
+        console.log(`Total trades: ${history.length}`);
+        console.log(`Wins: ${wins} | Losses: ${losses} | Win rate: ${winRate}%`);
+        console.log(`Total net PnL: ${total.toFixed(4)} USDT`);
+    }
+
+    const openPositions = db.prepare("SELECT * FROM active_positions WHERE status = 'OPEN'").all();
+    console.log('\n--- Current Open Positions ---');
+    if (openPositions.length === 0) {
+        console.log('🟢 Tidak ada posisi open.');
+    } else {
+        for (const p of openPositions) {
+            console.log(
+                `#${p.id} ${p.pair} | Buy: ${p.buy_price} | Amount: ${p.amount_coin} | ` +
+                `TP: ${p.target_tp} | SL: ${p.target_sl}`
+            );
+        }
+    }
+
+    console.log('\n--- Wallet Balance ---');
+    console.table(db.prepare('SELECT * FROM wallet').all());
+    console.log('=========================================\n');
+}
+
 async function startBot() {
     try {
         const wallet = db.prepare('SELECT * FROM wallet').all();
         console.log('📊 Current Dummy Wallet:');
         console.table(wallet);
+
+        printTradeReport();
 
         console.log('\n⏳ Menjalankan scan pertama...');
         await mainLoop();
@@ -154,6 +226,11 @@ async function startBot() {
     } catch (error) {
         console.error('❌ Bot gagal inisialisasi:', error.message);
     }
+}
+
+if (process.argv.includes('--report')) {
+    printTradeReport();
+    process.exit(0);
 }
 
 startBot();
