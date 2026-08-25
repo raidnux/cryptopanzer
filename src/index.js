@@ -8,6 +8,8 @@ const { sendTelegramMessage } = require('./utils/telegram');
 
 const SCAN_INTERVAL_MS = 60 * 1000; // 1 menit
 
+let DRY_RUN = false;
+
 // Show CLI usage and exit before the bot starts (also skips Telegram polling)
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
     console.log(`
@@ -17,10 +19,23 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 Usage:
   node src/index.js               Start the bot (default)
   node src/index.js --report      Print trade report and exit
+  node src/index.js --dry-run     Scan only, no order execution
+  node src/index.js --no-telegram Disable Telegram polling (avoid conflict with VPS instance)
   node src/index.js --help (-h)   Show this help
 =========================================
 `);
     process.exit(0);
+}
+
+// Dry-run / live mode flag
+if (process.argv.includes('--dry-run')) {
+    DRY_RUN = true;
+    console.log('🟢 DRY-RUN MODE: scanning only, no order execution');
+}
+if (process.argv.includes('--live')) {
+    DRY_RUN = false;
+} else {
+    DRY_RUN = false; // default: live mode
 }
 
 // Format: 2026-08-13 06:42:13
@@ -78,6 +93,7 @@ async function monitorOpenPositions(currentPrice) {
 
 // Check for a fresh entry signal and open a new position
 async function checkEntry(currentPrice, candles) {
+    if (DRY_RUN) return;
     const signal = checkEntrySignal(candles);
     if (!signal) return;
 
@@ -140,7 +156,7 @@ async function mainLoop() {
             // candles too short — fall back gracefully
         }
 
-        console.log(`🔄 [${time}] Checking ${TRADING_CONFIG.symbol} | Price: ${currentPrice} | ${indicatorText} | ${strategyTag}`);
+        console.log(`🔄 [${time}] Checking ${TRADING_CONFIG.symbol} | Price: ${currentPrice} | ${indicatorText} | ${strategyTag}${DRY_RUN ? ' | DRY-RUN' : ''}`);
 
         await monitorOpenPositions(currentPrice);
         await checkEntry(currentPrice, candles);
