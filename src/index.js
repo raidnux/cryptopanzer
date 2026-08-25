@@ -66,6 +66,28 @@ async function monitorOpenPositions(currentPrice) {
         // Only monitor positions for the configured trading pair
         if (position.pair !== TRADING_CONFIG.symbol) continue;
 
+        // Break-even stop: once price reaches 1R (+risk%), ratchet SL up to
+        // fee-inclusive breakeven (entry / 0.999^2 ≈ +0.2%) so the trade can no longer lose.
+        const oneR = position.buy_price * (1 + STRATEGY_CONFIG.riskPercent);
+        if (currentPrice >= oneR) {
+            const breakEven = position.buy_price / (0.999 * 0.999);
+            if (breakEven > position.target_sl) {
+                db.prepare('UPDATE active_positions SET target_sl = ? WHERE id = ?')
+                    .run(breakEven, position.id);
+                console.log(
+                    `[BREAK-EVEN] #${position.id} ${position.pair} | SL moved ` +
+                    `${position.target_sl} → ${breakEven.toFixed(4)}`
+                );
+                await sendTelegramMessage(
+                    `🟡 <b>Break-Even Aktif</b>\n` +
+                    `Pair: <b>${position.pair}</b>\n` +
+                    `SL dinaikkan ke harga entry + fee: <code>${breakEven.toFixed(2)}</code>\n` +
+                    `Posisi sekarang bebas risiko.`
+                );
+                position.target_sl = breakEven; // keep in-memory copy consistent for the check below
+            }
+        }
+
         let closeReason = null;
 
         if (currentPrice <= position.target_sl) {
