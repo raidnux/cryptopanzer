@@ -24,7 +24,7 @@
 </head>
 <body>
 <h1>🖥️ CryptoPanzer — Trade Report Dashboard</h1>
-<div class="sub">Read-only view of the paper trading database · refreshes every 30s</div>
+<div class="sub">Read-only view of the paper trading database · refreshes every 30s · <span id="lastUpdate">loading…</span></div>
 
 <div class="cards" id="cards"></div>
 
@@ -39,6 +39,13 @@
 
 <script>
 const fmt = n => Number(n).toFixed(4);
+function stamp(ok) {
+    const now = new Date();
+    const optsUTC = { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+    const optsWIB = { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+    const t = `Last updated: ${now.toLocaleTimeString('en-GB', optsUTC)} UTC · ${now.toLocaleTimeString('en-GB', optsWIB)} WIB`;
+    document.getElementById('lastUpdate').innerHTML = ok ? t : `⚠️ update failed at ${t.replace('Last updated: ', '')}`;
+}
 async function load() {
     try {
         const [wallet, positions, history] = await Promise.all([
@@ -69,7 +76,9 @@ async function load() {
                 return `<tr><td>#${t.id}</td><td>${t.pair}</td><td>${t.buy_price}</td><td>${t.sell_price}</td><td class="${win ? 'green' : 'red'}">${fmt(t.profit_loss)}</td><td>${t.close_reason}</td><td>${t.timestamp}</td><td>${win ? '✅ WIN' : '❌ LOSS'}</td></tr>`;
             }).join('')
             : '<tr><td colspan="8">No closed trades yet.</td></tr>';
+        stamp(true);
     } catch (err) {
+        stamp(false);
         document.getElementById('cards').innerHTML = `<div class="card"><div class="label">Error loading data</div><div class="value red">⚠️</div></div>`;
     }
 }
