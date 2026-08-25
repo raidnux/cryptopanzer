@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CryptoPanzer — Trade Report</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, 'Segoe UI', Roboto, monospace; background: #0d1117; color: #e6edf3; padding: 24px; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .sub { color: #8b949e; font-size: 12px; margin-bottom: 20px; }
+    .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 18px; min-width: 150px; }
+    .card .label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+    .card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+    .green { color: #3fb950; } .red { color: #f85149; } .yellow { color: #d29922; }
+    table { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
+    th, td { padding: 8px 12px; text-align: left; font-size: 13px; border-bottom: 1px solid #21262d; }
+    th { background: #21262d; color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+    tr:last-child td { border-bottom: none; }
+    h2 { font-size: 15px; margin-bottom: 8px; color: #c9d1d9; }
+    .refresh-note { font-size: 11px; color: #8b949e; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<h1>🖥️ CryptoPanzer — Trade Report Dashboard</h1>
+<div class="sub">Read-only view of the paper trading database · refreshes every 30s</div>
+
+<div class="cards" id="cards"></div>
+
+<h2>📊 PnL Summary</h2>
+<table id="summaryTable"><thead><tr><th>Total Trades</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Net PnL (USDT)</th></tr></thead><tbody></tbody></table>
+
+<h2>🟢 Open Positions</h2>
+<table id="positionsTable"><thead><tr><th>ID</th><th>Pair</th><th>Buy Price</th><th>Amount</th><th>TP</th><th>SL</th></tr></thead><tbody></tbody></table>
+
+<h2>📜 Closed Trades</h2>
+<table id="historyTable"><thead><tr><th>ID</th><th>Pair</th><th>Buy</th><th>Sell</th><th>PnL</th><th>Reason</th><th>Time</th><th>Result</th></tr></thead><tbody></tbody></table>
+
+<script>
+const fmt = n => Number(n).toFixed(4);
+async function load() {
+    try {
+        const [wallet, positions, history] = await Promise.all([
+            fetch('/api/wallet').then(r => r.json()),
+            fetch('/api/positions').then(r => r.json()),
+            fetch('/api/history').then(r => r.json()),
+        ]);
+
+        const usdt = wallet.find(w => w.asset === 'USDT');
+        const btc = wallet.find(w => w.asset === 'BTC');
+        document.getElementById('cards').innerHTML = `
+            <div class="card"><div class="label">USDT Balance</div><div class="value">${usdt ? fmt(usdt.balance) : '—'}</div></div>
+            <div class="card"><div class="label">BTC Balance</div><div class="value">${btc ? btc.balance.toFixed(8) : '—'}</div></div>
+            <div class="card"><div class="label">Open Positions</div><div class="value yellow">${positions.length}</div></div>
+            <div class="card"><div class="label">Net PnL</div><div class="value ${history.summary.netPnl >= 0 ? 'green' : 'red'}">${history.summary.netPnl}</div></div>`;
+
+        const s = history.summary;
+        document.querySelector('#summaryTable tbody').innerHTML =
+            `<tr><td>${s.totalTrades}</td><td class="green">${s.wins}</td><td class="red">${s.losses}</td><td>${s.winRate}%</td><td class="${s.netPnl >= 0 ? 'green' : 'red'}">${fmt(s.netPnl)}</td></tr>`;
+
+        document.querySelector('#positionsTable tbody').innerHTML = positions.length
+            ? positions.map(p => `<tr><td>#${p.id}</td><td>${p.pair}</td><td>${p.buy_price}</td><td>${Number(p.amount_coin).toFixed(8)}</td><td class="green">${p.target_tp}</td><td class="red">${p.target_sl}</td></tr>`).join('')
+            : '<tr><td colspan="6">No open positions.</td></tr>';
+
+        document.querySelector('#historyTable tbody').innerHTML = history.trades.length
+            ? history.trades.map(t => {
+                const win = t.profit_loss >= 0;
+                return `<tr><td>#${t.id}</td><td>${t.pair}</td><td>${t.buy_price}</td><td>${t.sell_price}</td><td class="${win ? 'green' : 'red'}">${fmt(t.profit_loss)}</td><td>${t.close_reason}</td><td>${t.timestamp}</td><td>${win ? '✅ WIN' : '❌ LOSS'}</td></tr>`;
+            }).join('')
+            : '<tr><td colspan="8">No closed trades yet.</td></tr>';
+    } catch (err) {
+        document.getElementById('cards').innerHTML = `<div class="card"><div class="label">Error loading data</div><div class="value red">⚠️</div></div>`;
+    }
+}
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>
