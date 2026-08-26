@@ -4,6 +4,7 @@
 const express = require('express');
 const Database = require('better-sqlite3');
 const path = require('path');
+const { exchange } = require('../config/exchange');
 
 const PORT = Number(process.env.DASHBOARD_PORT) || 3000;
 const HOST = '127.0.0.1'; // never 0.0.0.0
@@ -59,6 +60,17 @@ app.get('/api/positions', (req, res) => {
         res.json(db.prepare("SELECT * FROM active_positions WHERE status='OPEN'").all());
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+});
+
+// Harga live (public, tanpa API key) — fail-safe: return null bila fetch gagal
+app.get('/api/ticker', async (req, res) => {
+    try {
+        const symbol = process.env.DEFAULT_SYMBOL || 'BTC/USDT';
+        const t = await exchange.fetchTicker(symbol);
+        res.json({ symbol, price: t.last });
+    } catch (err) {
+        res.json({ symbol: process.env.DEFAULT_SYMBOL || 'BTC/USDT', price: null, error: err.message });
     }
 });
 
