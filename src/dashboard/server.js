@@ -20,6 +20,32 @@ try {
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Metadata: timezone offset server (menit) + strategi aktif dari env bot (require-time)
+app.get('/api/meta', (req, res) => {
+    try {
+        const now = new Date();
+        const offsetMin = -now.getTimezoneOffset(); // misal WIB = 420
+        let strategy = null;
+        try {
+            // Baca langsung dari env yang dipakai proses dashboard; kalau tidak ada,
+            // fallback baca .env file tanpa mengekspos nilainya.
+            require('dotenv').config();
+            strategy = {
+                symbol: process.env.DEFAULT_SYMBOL || 'BTC/USDT',
+                timeframe: process.env.DEFAULT_TIMEFRAME || '15m',
+                rsiPeriod: Number(process.env.RSI_PERIOD) || 14,
+                emaPeriod: Number(process.env.EMA_PERIOD) || 20,
+                rsiOversold: Number(process.env.RSI_OVERSOLD) || 30,
+                riskPercent: Number(process.env.RISK_PERCENT) || 0.01,
+                rrRatio: Number(process.env.RR_RATIO) || 2,
+            };
+        } catch (_) { strategy = null; }
+        res.json({ serverTzOffsetMinutes: offsetMin, strategy });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/wallet', (req, res) => {
     try {
         res.json(db.prepare('SELECT * FROM wallet').all());

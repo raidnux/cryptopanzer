@@ -18,8 +18,13 @@ function sendTelegramMessage(text) {
         return;
     }
     if (!TELEGRAM_ENABLED) return;
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' })
+    bot.sendMessage(chatId, text, { parse_mode: 'HTML' })
         .catch(err => console.error('[TELEGRAM ERROR]', err.message));
+}
+
+// Escape karakter yang dianggap entitas HTML oleh Telegram (fail-safe format)
+function escapeHtml(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 if (TELEGRAM_ENABLED) {
@@ -67,5 +72,6 @@ if (TELEGRAM_ENABLED) {
 }
 
 module.exports = {
-    sendTelegramMessage
+    sendTelegramMessage,
+    escapeHtml
 };
