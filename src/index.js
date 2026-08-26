@@ -215,7 +215,7 @@ function printTradeReport() {
             const result = t.profit_loss >= 0 ? '✅ WIN' : '❌ LOSS';
             console.log(
                 `#${t.id} ${t.pair} | Buy: ${t.buy_price} | Sell: ${t.sell_price} | ` +
-                `PnL: ${t.profit_loss.toFixed(4)} USDT | ${t.close_reason} | ${t.timestamp} | ${result}`
+                `PnL: ${t.profit_loss.toFixed(4)} USDT | ${t.close_reason} | Opened: ${t.open_time || '—'} | Closed: ${t.timestamp} | ${result}`
             );
         }
 
@@ -238,7 +238,7 @@ function printTradeReport() {
         for (const p of openPositions) {
             console.log(
                 `#${p.id} ${p.pair} | Buy: ${p.buy_price} | Amount: ${p.amount_coin} | ` +
-                `TP: ${p.target_tp} | SL: ${p.target_sl}`
+                `TP: ${p.target_tp} | SL: ${p.target_sl} | Opened: ${p.entry_time || '—'}`
             );
         }
     }

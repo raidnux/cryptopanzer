@@ -32,10 +32,10 @@
 <table id="summaryTable"><thead><tr><th>Total Trades</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Net PnL (USDT)</th></tr></thead><tbody></tbody></table>
 
 <h2>🟢 Open Positions</h2>
-<table id="positionsTable"><thead><tr><th>ID</th><th>Pair</th><th>Buy Price</th><th>Amount</th><th>TP</th><th>SL</th></tr></thead><tbody></tbody></table>
+<table id="positionsTable"><thead><tr><th>ID</th><th>Pair</th><th>Buy Price</th><th>Amount</th><th>TP</th><th>SL</th><th>Opened</th></tr></thead><tbody></tbody></table>
 
 <h2>📜 Closed Trades</h2>
-<table id="historyTable"><thead><tr><th>ID</th><th>Pair</th><th>Buy</th><th>Sell</th><th>PnL</th><th>Reason</th><th>Time</th><th>Result</th></tr></thead><tbody></tbody></table>
+<table id="historyTable"><thead><tr><th>ID</th><th>Pair</th><th>Buy</th><th>Sell</th><th>PnL</th><th>Reason</th><th>Opened</th><th>Time</th><th>Result</th></tr></thead><tbody></tbody></table>
 
 <script>
 const fmt = n => Number(n).toFixed(4);
@@ -67,15 +67,15 @@ async function load() {
             `<tr><td>${s.totalTrades}</td><td class="green">${s.wins}</td><td class="red">${s.losses}</td><td>${s.winRate}%</td><td class="${s.netPnl >= 0 ? 'green' : 'red'}">${fmt(s.netPnl)}</td></tr>`;
 
         document.querySelector('#positionsTable tbody').innerHTML = positions.length
-            ? positions.map(p => `<tr><td>#${p.id}</td><td>${p.pair}</td><td>${p.buy_price}</td><td>${Number(p.amount_coin).toFixed(8)}</td><td class="green">${p.target_tp}</td><td class="red">${p.target_sl}</td></tr>`).join('')
-            : '<tr><td colspan="6">No open positions.</td></tr>';
+            ? positions.map(p => `<tr><td>#${p.id}</td><td>${p.pair}</td><td>${p.buy_price}</td><td>${Number(p.amount_coin).toFixed(8)}</td><td class="green">${p.target_tp}</td><td class="red">${p.target_sl}</td><td>${p.entry_time || '—'}</td></tr>`).join('')
+            : '<tr><td colspan="7">No open positions.</td></tr>';
 
         document.querySelector('#historyTable tbody').innerHTML = history.trades.length
             ? history.trades.map(t => {
                 const win = t.profit_loss >= 0;
-                return `<tr><td>#${t.id}</td><td>${t.pair}</td><td>${t.buy_price}</td><td>${t.sell_price}</td><td class="${win ? 'green' : 'red'}">${fmt(t.profit_loss)}</td><td>${t.close_reason}</td><td>${t.timestamp}</td><td>${win ? '✅ WIN' : '❌ LOSS'}</td></tr>`;
+                return `<tr><td>#${t.id}</td><td>${t.pair}</td><td>${t.buy_price}</td><td>${t.sell_price}</td><td class="${win ? 'green' : 'red'}">${fmt(t.profit_loss)}</td><td>${t.close_reason}</td><td>${t.open_time || '—'}</td><td>${t.timestamp}</td><td>${win ? '✅ WIN' : '❌ LOSS'}</td></tr>`;
             }).join('')
-            : '<tr><td colspan="8">No closed trades yet.</td></tr>';
+            : '<tr><td colspan="9">No closed trades yet.</td></tr>';
         stamp(true);
     } catch (err) {
         stamp(false);

@@ -28,7 +28,8 @@ db.exec(`
         amount_coin REAL,
         target_tp REAL,
         target_sl REAL,
-        status TEXT
+        status TEXT,
+        entry_time DATETIME
     );
 
     CREATE TABLE IF NOT EXISTS trade_history (
@@ -38,10 +39,22 @@ db.exec(`
         sell_price REAL,
         profit_loss REAL,
         close_reason TEXT,
-        timestamp DATETIME
+        timestamp DATETIME,
+        open_time DATETIME
     );
 `);
 console.log('Tabel berhasil dibuat.');
+
+// 3b. Migrasi aman: tambah kolom waktu untuk database lama (kalau kolom belum ada)
+function addColumnIfMissing(table, column, definition) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+    if (!cols.includes(column)) {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+        console.log(`Migrasi: kolom '${column}' ditambahkan ke tabel '${table}'.`);
+    }
+}
+addColumnIfMissing('active_positions', 'entry_time', 'DATETIME');
+addColumnIfMissing('trade_history', 'open_time', 'DATETIME');
 
 // 4. Database Seeder: Cek apakah wallet sudah ada isinya
 const checkWallet = db.prepare('SELECT COUNT(*) as count FROM wallet').get();

@@ -37,8 +37,8 @@ function executeDummyBuy(pair, currentPrice, usdtAmount, targetTp, targetSl) {
 
         // Catat posisi baru ke tabel active_positions dengan status OPEN
         const insertPosition = db.prepare(`
-            INSERT INTO active_positions (pair, buy_price, amount_coin, target_tp, target_sl, status)
-            VALUES (?, ?, ?, ?, ?, 'OPEN')
+            INSERT INTO active_positions (pair, buy_price, amount_coin, target_tp, target_sl, status, entry_time)
+            VALUES (?, ?, ?, ?, ?, 'OPEN', datetime('now', 'localtime'))
         `);
         insertPosition.run(pair, currentPrice, finalCoinAmount, targetTp, targetSl);
     });
@@ -95,12 +95,12 @@ function executeDummySell(positionId, currentPrice, closeReason) {
         // Update status active_positions jadi CLOSED
         db.prepare('UPDATE active_positions SET status = ? WHERE id = ?').run('CLOSED', positionId);
 
-        // Masukkan log ke trade_history
+        // Masukkan log ke trade_history (open_time dibawa dari entry posisi)
         const insertHistory = db.prepare(`
-            INSERT INTO trade_history (pair, buy_price, sell_price, profit_loss, close_reason, timestamp)
-            VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
+            INSERT INTO trade_history (pair, buy_price, sell_price, profit_loss, close_reason, timestamp, open_time)
+            VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'), ?)
         `);
-        insertHistory.run(pair, buyPrice, currentPrice, profitLoss, closeReason);
+        insertHistory.run(pair, buyPrice, currentPrice, profitLoss, closeReason, position.entry_time || null);
     });
 
     try {
