@@ -1,20 +1,26 @@
-// checkAccount.js — Phase 0-lite: Binance Read-Only Account Viewer
+// checkAccount.js — Read-only Binance account viewer (real account & SPOT TESTNET)
 // Usage:
-//   node src/scripts/checkAccount.js                  # non-zero spot balances
+//   node src/scripts/checkAccount.js                  # non-zero spot balances (REAL account, read-only key)
 //   node src/scripts/checkAccount.js --trades [PAIR]  # + recent trade fills (real fees), default pair BTC/USDT
 //   node src/scripts/checkAccount.js --orders [PAIR]  # + order history w/ statuses, default pair BTC/USDT
+//   node src/scripts/checkAccount.js --testnet        # same checks against Binance SPOT TESTNET (fake money)
 //   node src/scripts/checkAccount.js --help | -h      # usage, exits without any API call
-// Requires .env: BINANCE_READ_KEY / BINANCE_READ_SECRET ("Enable Reading" ONLY key)
+// Keys (from .env):
+//   REAL account:    BINANCE_READ_KEY   / BINANCE_READ_SECRET   ("Enable Reading" ONLY)
+//   TESTNET account: BINANCE_TEST_KEY   / BINANCE_TEST_SECRET   (testnet.binance.vision, fake money)
 require('dotenv').config();
 const ccxt = require('ccxt');
 
 const DEFAULT_PAIR = 'BTC/USDT'; // matches bot's TRADING_CONFIG.symbol
 
 function printUsage() {
-  console.log(`Usage: node src/scripts/checkAccount.js [--trades] [--orders] [PAIR]
+    console.log(`Usage: node src/scripts/checkAccount.js [--testnet] [--trades] [--orders] [PAIR]
 
-Read-only Binance spot account viewer (no trading capability).
-Requires BINANCE_READ_KEY / BINANCE_READ_SECRET in .env.
+Read-only Binance spot account viewer — no trading capability.
+
+Accounts (pick one):
+  (default)         REAL Binance account — BINANCE_READ_KEY / BINANCE_READ_SECRET
+  --testnet         Binance SPOT TESTNET (fake money) — BINANCE_TEST_KEY / BINANCE_TEST_SECRET
 
 Options:
   (no flags)        Print non-zero spot balances
@@ -25,20 +31,21 @@ Options:
 }
 
 function parseArgs(argv) {
-  const args = { help: false, trades: false, orders: false, pair: DEFAULT_PAIR };
-  for (const a of argv) {
-    if (a === '--help' || a === '-h') args.help = true;
-    else if (a === '--trades') args.trades = true;
-    else if (a === '--orders') args.orders = true;
-    else if (!a.startsWith('--')) {
-      // validate shape like BTC/USDT, fail closed otherwise
-      if (!/^[A-Z0-9]+\/[A-Z0-9]+$/.test(a.toUpperCase())) {
-        throw new Error(`Invalid pair "${a}" — expected format BASE/QUOTE e.g. ${DEFAULT_PAIR}`);
-      }
-      args.pair = a.toUpperCase();
-    } else throw new Error(`Unknown flag "${a}" — see --help`);
-  }
-  return args;
+    const args = { help: false, trades: false, orders: false, testnet: false, pair: DEFAULT_PAIR };
+    for (const a of argv) {
+        if (a === '--help' || a === '-h') args.help = true;
+        else if (a === '--trades') args.trades = true;
+        else if (a === '--orders') args.orders = true;
+        else if (a === '--testnet') args.testnet = true;
+        else if (!a.startsWith('--')) {
+            // validate shape like BTC/USDT, fail closed otherwise
+            if (!/^[A-Z0-9]+\/[A-Z0-9]+$/.test(a.toUpperCase())) {
+                throw new Error(`Invalid pair "${a}" — expected format BASE/QUOTE e.g. ${DEFAULT_PAIR}`);
+            }
+            args.pair = a.toUpperCase();
+        } else throw new Error(`Unknown flag "${a}" — see --help`);
+    }
+    return args;
 }
 
 function fmtAmount(n) {
@@ -112,12 +119,14 @@ async function main() {
     return;
   }
 
-  const apiKey = process.env.BINANCE_READ_KEY;
-  const apiSecret = process.env.BINANCE_READ_SECRET;
+  const apiKey = args.testnet ? process.env.BINANCE_TEST_KEY : process.env.BINANCE_READ_KEY;
+  const apiSecret = args.testnet ? process.env.BINANCE_TEST_SECRET : process.env.BINANCE_READ_SECRET;
 
   // Fail-safe: never proceed with missing keys; never print their values
   if (!apiKey || !apiSecret) {
-    console.error('[AUTH ERROR] BINANCE_READ_KEY / BINANCE_READ_SECRET not set in .env');
+    console.error(args.testnet
+      ? '[AUTH ERROR] BINANCE_TEST_KEY / BINANCE_TEST_SECRET not set in .env'
+      : '[AUTH ERROR] BINANCE_READ_KEY / BINANCE_READ_SECRET not set in .env');
     process.exit(1);
   }
 
@@ -126,6 +135,7 @@ async function main() {
     secret: apiSecret,
     enableRateLimit: true,
   });
+  if (args.testnet) exchange.setSandboxMode(true); // → testnet.binance.vision (fake money)
 
   let failures = 0;
 
@@ -138,7 +148,7 @@ async function main() {
     if (rows.length === 0) {
       console.log('No non-zero balances found.');
     } else {
-      console.log('Binance spot balances (non-zero):');
+      console.log(`Binance ${args.testnet ? 'TESTNET ' : ''}spot balances (non-zero):`);
       for (const [asset, total] of rows) {
         console.log(`${asset.padEnd(10)} ${fmtAmount(total)}`);
       }
@@ -146,7 +156,7 @@ async function main() {
   } catch (err) {
     // Friendly message + exit code 1 (decision: option a — strict fail)
     if (err instanceof ccxt.AuthenticationError) {
-      console.error('[AUTH ERROR] Invalid API key/secret or key has no reading permission.');
+      console.error(`[AUTH ERROR] ${args.testnet ? '[TESTNET]' : '[REAL]'} Invalid API key/secret or key has no reading permission.`);
     } else {
       console.error(`[FETCH ERROR] Failed to fetch account balance: ${err.message}`);
     }
