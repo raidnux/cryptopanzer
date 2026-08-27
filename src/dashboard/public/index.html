@@ -28,8 +28,8 @@
 <h1>🖥️ CryptoPanzer — Trade Report Dashboard</h1>
 <div class="sub">Read-only view of the paper trading database · refreshes every 30s · <span id="lastUpdate">loading…</span></div>
 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
-    <button id="tabBtnReport" onclick="showTab('report')">📊 Trade Report</button>
-    <button id="tabBtnBinance" onclick="showTab('binance')">🅑 Binance</button>
+    <button id="tabBtnReport" class="tab" onclick="showTab('report')">📈 Paper Trading</button>
+    <button id="tabBtnBinance" class="tab" onclick="showTab('binance')">🅑 Binance Account</button>
 </div>
 
 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
@@ -83,6 +83,8 @@ function setTz(mode) {
     localStorage.setItem('tz', mode);
     updateTzButtons();
     load();
+    // Binance tab timestamps also follow the selected timezone
+    if (currentTab === 'binance') loadBinance();
 }
 function updateTzButtons() {
     const on = 'background:#3fb950;color:#0d1117;border:none;border-radius:4px;padding:3px 8px;font-weight:700;';
