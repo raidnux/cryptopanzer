@@ -29,6 +29,7 @@
 <div class="sub">Read-only view of the paper trading database · refreshes every 30s · <span id="lastUpdate">loading…</span></div>
 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
     <button id="tabBtnReport" class="tab" onclick="showTab('report')">📈 Paper Trading</button>
+    <button id="tabBtnTestnet" class="tab" onclick="showTab('testnet')">🅑 Binance Testnet</button>
     <button id="tabBtnBinance" class="tab" onclick="showTab('binance')">🅑 Binance Account</button>
 </div>
 
@@ -69,6 +70,32 @@
 
     <h2>📋 Order History (most recent first)</h2>
     <table><thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Status</th><th>Filled Avg</th><th>Amount</th></tr></thead><tbody id="bnOrders"></tbody></table>
+</div>
+
+<div id="tabTestnet" style="display:none;">
+    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+        <div class="card" style="padding:8px 16px;">
+            <div class="label">Live <span id="tnPair">BTC/USDT</span></div>
+            <div class="value" id="tnPrice">—</div>
+        </div>
+        <div class="card" style="padding:8px 16px;">
+            <div class="label">Testnet Net PnL</div>
+            <div class="value" id="tnNetPnl">—</div>
+        </div>
+    </div>
+    <div id="tnStatus" style="font-size:13px; margin-bottom:12px;"></div>
+
+    <h2>💰 Exchange Balances (BTC & USDT only)</h2>
+    <table><thead><tr><th>Asset</th><th>Total</th></tr></thead><tbody id="tnBalances"></tbody></table>
+
+    <h2>🤖 Bot Wallet (mirrored in testnet.db)</h2>
+    <table><thead><tr><th>Asset</th><th>Balance</th></tr></thead><tbody id="tnWallet"></tbody></table>
+
+    <h2>🟢 Bot Open Positions</h2>
+    <table><thead><tr><th>ID</th><th>Pair</th><th>Buy Price</th><th>Amount</th><th>TP</th><th>SL</th><th>Opened</th><th>Current</th><th>PnL%</th></tr></thead><tbody id="tnPositions"></tbody></table>
+
+    <h2>📜 Bot Closed Trades</h2>
+    <table><thead><tr><th>ID</th><th>Pair</th><th>Buy</th><th>Sell</th><th>PnL</th><th>Reason</th><th>Opened</th><th>Closed</th><th>Result</th></tr></thead><tbody id="tnTrades"></tbody></table>
 </div>
 
 <script>
@@ -176,10 +203,13 @@ let currentTab = 'report';
 function showTab(t) {
     currentTab = t;
     document.getElementById('tabReport').style.display = t === 'report' ? '' : 'none';
+    document.getElementById('tabTestnet').style.display = t === 'testnet' ? '' : 'none';
     document.getElementById('tabBinance').style.display = t === 'binance' ? '' : 'none';
     document.getElementById('tabBtnReport').classList.toggle('active', t === 'report');
+    document.getElementById('tabBtnTestnet').classList.toggle('active', t === 'testnet');
     document.getElementById('tabBtnBinance').classList.toggle('active', t === 'binance');
     if (t === 'binance') loadBinance();
+    if (t === 'testnet') loadTestnet();
 }
 document.getElementById('tabBtnReport').classList.add('active');
 
@@ -232,6 +262,80 @@ async function loadBinance() {
 }
 
 setInterval(() => { if (currentTab === 'binance') loadBinance(); }, 30000);
+
+// ---- Binance Testnet tab (BTC/USDT only) ----
+async function loadTestnet() {
+    const el = id => document.getElementById(id);
+    try {
+        const d = await fetch('/api/testnet').then(r => r.json());
+
+        // price + net PnL cards
+        el('tnPair').textContent = d.pair || 'BTC/USDT';
+        el('tnPrice').textContent = d.price != null
+            ? '$' + Number(d.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : '—';
+        const s = d.bot && d.bot.summary;
+        if (s) {
+            el('tnNetPnl').textContent = (s.netPnl >= 0 ? '+' : '') + fmt(s.netPnl);
+            el('tnNetPnl').className = 'value ' + (s.netPnl >= 0 ? 'green' : 'red');
+        } else {
+            el('tnNetPnl').textContent = '—';
+            el('tnNetPnl').className = 'value';
+        }
+
+        // exchange balances (BTC & USDT only)
+        if (d.exError) {
+            const msg = d.exError === 'no_keys' ? '⚠️ Testnet keys not configured in .env (BINANCE_TEST_KEY / BINANCE_TEST_SECRET)'
+                : d.exError === 'auth' ? '⚠️ Testnet auth error — check BINANCE_TEST_KEY / BINANCE_TEST_SECRET'
+                : '⚠️ Testnet fetch error';
+            el('tnStatus').innerHTML = `<span class="red">${msg}</span>`;
+            el('tnBalances').innerHTML = '';
+        } else {
+            el('tnStatus').innerHTML = '';
+            el('tnBalances').innerHTML = (d.exchangeBalances || []).length
+                ? d.exchangeBalances.map(b => `<tr><td>${b.asset}</td><td>${fmtBn(b.total)}</td></tr>`).join('')
+                : '<tr><td colspan="2">—</td></tr>';
+        }
+
+        // bot data from testnet.db
+        const botNA = '<tr><td colspan="9">Testnet DB not available yet (bot belum pernah jalan di mode testnet).</td></tr>';
+        if (!d.bot || !d.bot.available) {
+            el('tnWallet').innerHTML = botNA;
+            el('tnPositions').innerHTML = botNA;
+            el('tnTrades').innerHTML = botNA;
+            return;
+        }
+        el('tnWallet').innerHTML = d.bot.wallet.length
+            ? d.bot.wallet.map(w => `<tr><td>${w.asset}</td><td>${fmtBn(w.balance)}</td></tr>`).join('')
+            : '<tr><td colspan="2">Empty — bot belum melakukan trade testnet pertama.</td></tr>';
+
+        const cur = d.price != null ? Number(d.price) : null;
+        el('tnPositions').innerHTML = d.bot.positions.length
+            ? d.bot.positions.map(p => {
+                const pnlPct = cur != null ? ((cur - p.buy_price) / p.buy_price * 100) : null;
+                const pnlCls = pnlPct == null ? '' : (pnlPct >= 0 ? 'green' : 'red');
+                const pnlTxt = pnlPct == null ? '—' : `${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%`;
+                return `<tr><td>#${p.id}</td><td>${p.pair}</td><td>${p.buy_price}</td><td>${fmtBn(p.amount_coin)}</td>` +
+                    `<td class="green">${p.target_tp}</td><td class="red">${p.target_sl}</td>` +
+                    `<td>${fmtDate(p.entry_time)}</td><td>${cur != null ? cur : '—'}</td><td class="${pnlCls}">${pnlTxt}</td></tr>`;
+            }).join('')
+            : '<tr><td colspan="9">No open positions.</td></tr>';
+
+        el('tnTrades').innerHTML = d.bot.trades.length
+            ? d.bot.trades.map(t => {
+                const win = t.profit_loss >= 0;
+                return `<tr><td>#${t.id}</td><td>${t.pair}</td><td>${t.buy_price}</td><td>${t.sell_price}</td>` +
+                    `<td class="${win ? 'green' : 'red'}">${fmt(t.profit_loss)}</td><td>${t.close_reason}</td>` +
+                    `<td>${fmtDate(t.open_time)}</td><td>${fmtDate(t.timestamp)}</td><td>${win ? '✅ WIN' : '❌ LOSS'}</td></tr>`;
+            }).join('')
+            : '<tr><td colspan="9">No closed trades yet.</td></tr>';
+    } catch (e) {
+        el('tnStatus').innerHTML = '<span class="red">⚠️ Failed to reach /api/testnet</span>';
+    }
+}
+
+setInterval(() => { if (currentTab === 'testnet') loadTestnet(); }, 30000);
+
 
 </script>
 </body>

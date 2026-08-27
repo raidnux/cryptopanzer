@@ -166,6 +166,87 @@ app.get('/api/binance', async (req, res) => {
     }
 });
 
+// ---- Testnet dashboard data (Phase 10 Phase 1) — BTC/USDT only ----
+// Bot data: db/testnet.db opened READONLY (optional — may not exist yet).
+// Exchange check: testnet fetchBalance filtered to BTC & USDT (keys: BINANCE_TEST_*).
+// Cached 60s so the 30s page refresh never spams the testnet API.
+let testnetDB = null;
+try {
+    testnetDB = new Database(path.resolve(__dirname, '../../db/testnet.db'), { readonly: true });
+    console.log('[DASHBOARD] testnet.db attached (READONLY)');
+} catch (_) {
+    testnetDB = null; // no testnet run yet — endpoint still works, sections show n/a
+    console.log('[DASHBOARD] testnet.db not found — testnet bot data sections will show n/a');
+}
+
+let testnetEx = null;
+let testnetCache = { at: 0, payload: null };
+
+function getTestnetEx() {
+    if (testnetEx) return testnetEx;
+    const key = process.env.BINANCE_TEST_KEY;
+    const secret = process.env.BINANCE_TEST_SECRET;
+    if (!key || !secret) return null;
+    testnetEx = new ccxt.binance({ apiKey: key, secret, enableRateLimit: true });
+    testnetEx.setSandboxMode(true); // → testnet.binance.vision
+    return testnetEx;
+}
+
+app.get('/api/testnet', async (req, res) => {
+    const now = Date.now();
+    if (testnetCache.payload && now - testnetCache.at < 60000) {
+        return res.json(testnetCache.payload);
+    }
+
+    // 1) Bot data from testnet.db (READONLY, optional)
+    const bot = { available: !!testnetDB, wallet: [], positions: [], trades: [], summary: null };
+    if (testnetDB) {
+        try {
+            bot.wallet = testnetDB.prepare('SELECT * FROM wallet').all();
+            bot.positions = testnetDB.prepare("SELECT * FROM active_positions WHERE status = 'OPEN'").all();
+            const history = testnetDB.prepare('SELECT * FROM trade_history ORDER BY id').all();
+            bot.trades = history;
+            const total = history.reduce((s, t) => s + t.profit_loss, 0);
+            const wins = history.filter((t) => t.profit_loss >= 0).length;
+            bot.summary = {
+                totalTrades: history.length,
+                wins,
+                losses: history.length - wins,
+                winRate: history.length ? +((wins / history.length) * 100).toFixed(1) : 0,
+                netPnl: +total.toFixed(4),
+            };
+        } catch (err) {
+            console.error(`⚠️ [DASHBOARD] /api/testnet bot-data error: ${err.message}`);
+            bot.available = false;
+        }
+    }
+
+    // 2) Exchange check: testnet BTC & USDT balances only
+    let exchangeBalances = null;
+    let exError = null;
+    const ex = getTestnetEx();
+    if (!ex) {
+        exError = 'no_keys';
+    } else {
+        try {
+            const b = await ex.fetchBalance();
+            exchangeBalances = [
+                { asset: 'BTC', total: (b.total && b.total.BTC) || 0 },
+                { asset: 'USDT', total: (b.total && b.total.USDT) || 0 },
+            ];
+        } catch (err) {
+            exError = err instanceof ccxt.AuthenticationError ? 'auth' : 'fetch';
+        }
+    }
+
+    // 3) Live price (public, no keys — same pattern as /api/ticker)
+    let price = null;
+    try { price = (await exchange.fetchTicker(BN_PAIR)).last; } catch (_) { price = null; }
+
+    testnetCache = { at: now, payload: { ok: true, pair: BN_PAIR, price, exchangeBalances, exError, bot } };
+    res.json(testnetCache.payload);
+});
+
 app.listen(PORT, HOST, () => {
     console.log(`🖥️  CryptoPanzer dashboard: http://${HOST}:${PORT} (localhost-only, READONLY)`);
 });
