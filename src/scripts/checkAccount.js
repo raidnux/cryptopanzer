@@ -41,10 +41,19 @@ function parseArgs(argv) {
   return args;
 }
 
+function fmtAmount(n) {
+  if (n === undefined || n === null) return '—';
+  // Fixed 8-decimals (BTC-style), trimmed of trailing zeros — avoids JS
+  // scientific notation for tiny values (e.g. 2.6e-7 → 0.00000026)
+  const s = Number(n).toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+  return s === '' ? '0' : s;
+}
+
 function fmtFee(trade) {
   if (!trade.fee || !trade.fee.cost) return '—';
-  return `${trade.fee.cost} ${trade.fee.currency}`;
+  return `${fmtAmount(trade.fee.cost)} ${trade.fee.currency}`;
 }
+
 
 function fmtTime(ts) {
   return ts ? new Date(ts).toISOString().replace('T', ' ').slice(0, 19) : '—';
@@ -59,7 +68,7 @@ async function showTrades(exchange, pair) {
     }
     console.log(`\nTrade fills (${pair}, most recent first):`);
     for (const t of trades.slice().reverse()) {
-      console.log(`${fmtTime(t.timestamp)} | ${t.side.toUpperCase().padEnd(4)} | price ${t.price} | amount ${t.amount} | fee ${fmtFee(t)}`);
+      console.log(`${fmtTime(t.timestamp)} | ${t.side.toUpperCase().padEnd(4)} | price ${fmtAmount(t.price)} | amount ${fmtAmount(t.amount)} | fee ${fmtFee(t)}`);
     }
   } catch (err) {
     console.error(`[TRADES ERROR] Failed to fetch trade fills for ${pair}: ${err.message}`);
@@ -79,7 +88,7 @@ async function showOrders(exchange, pair) {
     for (const o of orders.slice().reverse()) {
       console.log(
         `${fmtTime(o.timestamp)} | ${String(o.type || '?').toUpperCase().padEnd(6)} | ${o.side.toUpperCase().padEnd(4)} | ` +
-        `status ${(o.status || '?').toUpperCase().padEnd(10)} | filled avg ${o.average ?? o.price ?? '—'} | amount ${o.amount}`
+        `status ${(o.status || '?').toUpperCase().padEnd(10)} | filled avg ${fmtAmount(o.average ?? o.price)} | amount ${fmtAmount(o.amount)}`
       );
     }
   } catch (err) {
@@ -131,7 +140,7 @@ async function main() {
     } else {
       console.log('Binance spot balances (non-zero):');
       for (const [asset, total] of rows) {
-        console.log(`${asset.padEnd(10)} ${total}`);
+        console.log(`${asset.padEnd(10)} ${fmtAmount(total)}`);
       }
     }
   } catch (err) {
