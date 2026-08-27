@@ -20,11 +20,18 @@
     tr:last-child td { border-bottom: none; }
     h2 { font-size: 15px; margin-bottom: 8px; color: #c9d1d9; }
     .refresh-note { font-size: 11px; color: #8b949e; margin-bottom: 16px; }
+    button.tab { background:#21262d; color:#8b949e; border:1px solid #30363d; border-radius:6px; padding:6px 14px; font-size:13px; cursor:pointer; }
+    button.tab.active { background:#3fb950; color:#0d1117; border-color:#3fb950; font-weight:700; }
 </style>
 </head>
 <body>
 <h1>🖥️ CryptoPanzer — Trade Report Dashboard</h1>
 <div class="sub">Read-only view of the paper trading database · refreshes every 30s · <span id="lastUpdate">loading…</span></div>
+<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+    <button id="tabBtnReport" onclick="showTab('report')">📊 Trade Report</button>
+    <button id="tabBtnBinance" onclick="showTab('binance')">🅑 Binance</button>
+</div>
+
 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
     <div id="strategyBadge" class="card" style="padding:8px 14px; font-size:12px;">⚙️ Strategy: loading…</div>
     <div class="card" style="padding:6px 10px; font-size:12px;">
@@ -34,6 +41,7 @@
     </div>
 </div>
 
+<div id="tabReport">
 <div class="cards" id="cards"></div>
 
 <h2>📊 PnL Summary</h2>
@@ -44,6 +52,24 @@
 
 <h2>📜 Closed Trades</h2>
 <table id="historyTable"><thead><tr><th>ID</th><th>Pair</th><th>Buy</th><th>Sell</th><th>PnL</th><th>Reason</th><th>Opened</th><th>Time</th><th>Result</th></tr></thead><tbody></tbody></table>
+</div>
+
+<div id="tabBinance" style="display:none;">
+    <div class="card" style="display:inline-block; padding:8px 16px; margin-bottom:16px;">
+        <div class="label">Live <span id="bnPair">BTC/USDT</span></div>
+        <div class="value" id="bnPrice">—</div>
+    </div>
+    <div id="bnStatus" style="font-size:13px; margin-bottom:12px;"></div>
+
+    <h2>💰 Binance Spot Balances (non-zero)</h2>
+    <table id="bnBalancesTable"><thead><tr><th>Asset</th><th>Total</th></tr></thead><tbody id="bnBalances"></tbody></table>
+
+    <h2>🔁 Trade Fills (most recent first)</h2>
+    <table><thead><tr><th>Time</th><th>Side</th><th>Price</th><th>Amount</th><th>Fee</th></tr></thead><tbody id="bnTrades"></tbody></table>
+
+    <h2>📋 Order History (most recent first)</h2>
+    <table><thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Status</th><th>Filled Avg</th><th>Amount</th></tr></thead><tbody id="bnOrders"></tbody></table>
+</div>
 
 <script>
 const fmt = n => Number(n).toFixed(4);
@@ -142,6 +168,69 @@ async function load() {
 }
 load();
 setInterval(load, 30000);
+
+// ---- Binance tab ----
+let currentTab = 'report';
+function showTab(t) {
+    currentTab = t;
+    document.getElementById('tabReport').style.display = t === 'report' ? '' : 'none';
+    document.getElementById('tabBinance').style.display = t === 'binance' ? '' : 'none';
+    document.getElementById('tabBtnReport').classList.toggle('active', t === 'report');
+    document.getElementById('tabBtnBinance').classList.toggle('active', t === 'binance');
+    if (t === 'binance') loadBinance();
+}
+document.getElementById('tabBtnReport').classList.add('active');
+
+// Epoch → string in selected timezone (server mode uses server offset; WIB = UTC+7)
+function fmtEpoch(ms) {
+    if (!ms) return '—';
+    const p = n => String(n).padStart(2, '0');
+    const off = tzMode === 'wib' ? 420 : (serverOffsetMin ?? 0);
+    const d = new Date(ms + off * 60000);
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ` +
+           `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+const fmtBn = n => (n == null ? '—' : (Number(n).toFixed(8).replace(/0+$/, '').replace(/\.$/, '') || '0'));
+
+async function loadBinance() {
+    const el = id => document.getElementById(id);
+    try {
+        const d = await fetch('/api/binance').then(r => r.json());
+        el('bnPair').textContent = d.pair || 'BTC/USDT';
+        if (!d.ok) {
+            el('bnPrice').textContent = '—';
+            const msg = d.reason === 'no_keys' ? '⚠️ Binance read-only key not configured in .env (BINANCE_READ_KEY / BINANCE_READ_SECRET)'
+                : d.reason === 'auth' ? '⚠️ Binance auth error — check read-only key/secret'
+                : '⚠️ Binance fetch error: ' + (d.error || 'unknown');
+            el('bnStatus').innerHTML = `<span class="red">${msg}</span>`;
+            el('bnBalances').innerHTML = '';
+            el('bnTrades').innerHTML = '';
+            el('bnOrders').innerHTML = '';
+            return;
+        }
+        el('bnStatus').innerHTML = '';
+        el('bnPrice').textContent = d.price != null
+            ? '$' + Number(d.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : '—';
+        el('bnBalances').innerHTML = d.balances.length
+            ? d.balances.map(b => `<tr><td>${b.asset}</td><td>${fmtBn(b.total)}</td></tr>`).join('')
+            : '<tr><td colspan="2">No non-zero balances.</td></tr>';
+        el('bnTrades').innerHTML = d.trades.length
+            ? d.trades.map(t => {
+                const fee = t.feeCost != null ? `${fmtBn(t.feeCost)} ${t.feeCurrency || ''}` : '—';
+                return `<tr><td>${fmtEpoch(new Date(t.time.replace(' ', 'T') + 'Z').getTime())}</td><td>${t.side.toUpperCase()}</td><td>${fmtBn(t.price)}</td><td>${fmtBn(t.amount)}</td><td>${fee}</td></tr>`;
+            }).join('')
+            : '<tr><td colspan="5">No trade fills in the last ~90 days.</td></tr>';
+        el('bnOrders').innerHTML = d.orders.length
+            ? d.orders.map(o => `<tr><td>${fmtEpoch(new Date(o.time.replace(' ', 'T') + 'Z').getTime())}</td><td>${String(o.type).toUpperCase()}</td><td>${o.side.toUpperCase()}</td><td>${String(o.status).toUpperCase()}</td><td>${fmtBn(o.average)}</td><td>${fmtBn(o.amount)}</td></tr>`).join('')
+            : '<tr><td colspan="6">No order history.</td></tr>';
+    } catch (e) {
+        el('bnStatus').innerHTML = '<span class="red">⚠️ Failed to reach /api/binance</span>';
+    }
+}
+
+setInterval(() => { if (currentTab === 'binance') loadBinance(); }, 30000);
+
 </script>
 </body>
 </html>
