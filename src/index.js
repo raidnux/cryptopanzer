@@ -1,9 +1,14 @@
 require('dotenv').config();
-const db = require('./db/db');
+const { TRADING_MODE } = require('./config/tradingMode');
+// Mode-aware DB (Option B): paper → existing db.js (untouched); testnet/live → own file
+const db = TRADING_MODE === 'paper' ? require('./db/db') : require('./db/modeDB').modeDB;
 const { TRADING_CONFIG } = require('./config/exchange');
 const { fetchMarketData, getCurrentPrice } = require('./data/fetcher');
 const { checkEntrySignal, calculateIndicators, STRATEGY_CONFIG } = require('./strategy/indicator');
-const { executeDummyBuy, executeDummySell } = require('./engine/paperTrade');
+// Engine selection: paper engine untouched; testnet/live uses the real-order engine
+const engine = TRADING_MODE === 'paper' ? require('./engine/paperTrade') : require('./engine/liveTrade');
+const executeBuy = engine.executeDummyBuy || engine.executeLiveBuy;
+const executeSell = engine.executeDummySell || engine.executeLiveSell;
 const { sendTelegramMessage } = require('./utils/telegram');
 
 const SCAN_INTERVAL_MS = 60 * 1000; // 1 menit
@@ -46,7 +51,7 @@ function formatTimestamp(date = new Date()) {
 }
 
 console.log('=========================================');
-console.log('🚀 CryptoPanzer Bot - Paper Trading Init');
+console.log(`🚀 CryptoPanzer Bot — TRADING MODE: ${TRADING_MODE.toUpperCase()}${TRADING_MODE !== 'paper' ? ' ⚠️' : ''}`);
 console.log('=========================================');
 console.log(`Symbol: ${TRADING_CONFIG.symbol}`);
 console.log(`Timeframe: ${TRADING_CONFIG.timeframe}`);
@@ -97,7 +102,7 @@ async function monitorOpenPositions(currentPrice) {
         }
 
         if (closeReason) {
-            const success = executeDummySell(position.id, currentPrice, closeReason);
+            const success = executeSell(position.id, currentPrice, closeReason);
             if (success) {
                 const profitLoss = position.amount_coin * currentPrice * (1 - 0.001)
                     - position.amount_coin * position.buy_price;
@@ -128,8 +133,8 @@ async function checkEntry(currentPrice, candles) {
         return;
     }
 
-    const usdtAmount = 100; // Modal per posisi (paper)
-    const success = executeDummyBuy(
+    const usdtAmount = Number(process.env.ENTRY_AMOUNT_USDT) || 100; // Modal per posisi (paper default 100)
+    const success = await executeBuy(
         TRADING_CONFIG.symbol,
         signal.entryPrice,
         usdtAmount,
@@ -250,6 +255,11 @@ function printTradeReport() {
 
 async function startBot() {
     try {
+        // Testnet/live: reconcile DB belief vs exchange reality before the loop starts
+        if (TRADING_MODE !== 'paper' && typeof engine.reconcileOnStartup === 'function') {
+            await engine.reconcileOnStartup(TRADING_CONFIG.symbol);
+        }
+
         const wallet = db.prepare('SELECT * FROM wallet').all();
         console.log('📊 Current Dummy Wallet:');
         console.table(wallet);
