@@ -36,15 +36,40 @@ function addBalance(asset, delta) {
 }
 
 
-// Startup reconciliation: compare DB belief vs exchange reality; warn loudly on mismatch
+// Set an asset's mirrored balance to an absolute value (seeding / sync). Refuses
+// negative seeds so a bad exchange read can never drag the mirror below zero.
+function setBalance(asset, value) {
+    if (typeof value !== 'number' || value < 0) return;
+    modeDB.prepare(`
+        INSERT INTO wallet (asset, balance) VALUES (?, ?)
+        ON CONFLICT(asset) DO UPDATE SET balance = excluded.balance
+    `).run(asset, value);
+}
+
+// Startup reconciliation + mirror-wallet seed (FIX 2026-08-28): seed the mode-DB
+// wallet to the exchange's real base+quote balances so the mirror starts truthful
+// (fixes the negative-USDT display when the wallet begins at $0). Then compare OPEN
+// positions vs exchange reality and warn loudly on mismatch. Warn-only, never crashes.
 async function reconcileOnStartup(pair) {
     try {
         const ex = getTestnet();
-        const open = modeDB.prepare("SELECT * FROM active_positions WHERE status = 'OPEN'").all();
         const balance = await ex.fetchBalance();
+        const [coin, quote] = pair.split('/');
+
+        // (1) Seed the mirror wallet from real exchange balances (base + quote only)
+        //     — upsert-only, ignores the rest, keeps the mirror an honest snapshot.
+        const seedCoin = (balance.total && balance.total[coin]) || 0;
+        const seedQuote = (balance.total && balance.total[quote]) || 0;
+        setBalance(coin, seedCoin);
+        setBalance(quote, seedQuote);
+        console.log(
+            `[RECONCILE SEED] Wallet mirror di-seed dari exchange: ${coin}=${seedCoin}, ${quote}=${seedQuote}`
+        );
+
+        // (2) Position coverage check as before
+        const open = modeDB.prepare("SELECT * FROM active_positions WHERE status = 'OPEN'").all();
         for (const p of open) {
             if (p.pair !== pair) continue;
-            const coin = p.pair.split('/')[0];
             const real = (balance.total && balance.total[coin]) || 0;
             if (real < p.amount_coin) {
                 console.warn(
@@ -84,7 +109,11 @@ async function executeLiveBuy(pair, currentPrice, usdtAmount, targetTp, targetSl
         }
 
         const tx = modeDB.transaction(() => {
-            addBalance(quote, -(filled * avgPrice));
+            // Debit quote by full cost (fills value + real quote-side fee), so the
+            // mirror tracks reality exactly (FIX 2026-08-28). If the fee is charged
+            // in the quote currency, add it on top of the spent amount.
+            const feeQuoteCost = fee && fee.currency === quote ? fee.cost : 0;
+            addBalance(quote, -(filled * avgPrice + feeQuoteCost));
             addBalance(coin, filled);
             modeDB.prepare(`
                 INSERT INTO active_positions (pair, buy_price, amount_coin, target_tp, target_sl, status, entry_time, buy_order_id)
