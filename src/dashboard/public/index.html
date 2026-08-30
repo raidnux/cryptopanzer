@@ -135,6 +135,10 @@
 
     <h2>📜 Bot Closed Trades</h2>
     <table><thead><tr><th>ID</th><th>Pair</th><th>Buy</th><th>Sell</th><th>PnL</th><th>Reason</th><th>Opened</th><th>Closed</th><th>Result</th></tr></thead><tbody id="tnTrades"></tbody></table>
+
+    <h2>📚 Testnet Exchange Trades</h2>
+    <p class="sub" style="font-size:11px;color:var(--text-dim);">Live from Binance testnet API (fetchMyTrades — account's own fills)</p>
+    <table><thead><tr><th>TID</th><th>Side</th><th>Price</th><th>Amount</th><th>Time</th></tr></thead><tbody id="tnExTrades"></tbody></table>
 </div>
 
 <script>
@@ -372,6 +376,23 @@ async function loadTestnet() {
                     `<td>${fmtDate(t.open_time)}</td><td>${fmtDate(t.timestamp)}</td><td>${win ? '✅ WIN' : '❌ LOSS'}</td></tr>`;
             }).join('')
             : '<tr><td colspan="9">No closed trades yet.</td></tr>';
+
+        // also fetch live trades from Binance testnet API
+        try {
+            const exTrades = await fetch('/api/testnet/trades').then(r => r.json());
+            if (exTrades.ok) {
+                const trades = exTrades.trades || [];
+                el('tnExTrades').innerHTML = trades.map(t => {
+                    const side = t.side || t.type || '—';
+                    const p = t.price || '—';
+                    const a = t.amount || '—';
+                    const time = t.timestamp ? fmtDate(t.timestamp) : "—";
+                    return `<tr><td>${t.id}</td><td>${side}</td><td>${Number(p).toFixed(4)}</td><td>${Number(a).toFixed(4)}</td><td>${time}</td></tr>`;
+                }).join('') || '<tr><td colspan="5">No trades in testnet account.</td></tr>';
+            } else {
+                el('tnExTrades').innerHTML = '<tr><td colspan="5">Failed to fetch from API.</td></tr>';
+            }
+        } catch (e) { el('tnExTrades').innerHTML = '<tr><td colspan="5">Error fetching trades.</td></tr>'; }
     } catch (e) {
         el('tnStatus').innerHTML = '<span class="red">⚠️ Failed to reach /api/testnet</span>';
     }

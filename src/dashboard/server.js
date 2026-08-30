@@ -247,6 +247,17 @@ app.get('/api/testnet', async (req, res) => {
     res.json(testnetCache.payload);
 });
 
+    // 4) Live trade history from testnet API (for verification;filtered to open/closed)
+    app.get("/api/testnet/trades", async (req, res) => {
+        try {
+            const ex = getTestnetEx();
+            if (!ex) return res.json({ ok: false, error: "no_keys" });
+            const trades = (await ex.fetchMyTrades(BN_PAIR)).slice(-20).reverse();
+            res.json({ ok: true, pair: BN_PAIR, trades });
+        } catch (err) {
+            res.json({ ok: false, error: err.message });
+        }
+    });
 app.listen(PORT, HOST, () => {
     console.log(`🖥️  CryptoPanzer dashboard: http://${HOST}:${PORT} (localhost-only, READONLY)`);
 });
