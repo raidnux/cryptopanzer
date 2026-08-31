@@ -386,7 +386,8 @@ async function loadTestnet() {
                     const side = t.side || t.type || '—';
                     const p = t.price || '—';
                     const a = t.amount || '—';
-                    const time = t.timestamp ? fmtDate(t.timestamp) : "—";
+                    const time = t.datetime ? new Date(t.datetime).toLocaleString()
+                        : (t.timestamp ? new Date(t.timestamp).toLocaleString() : "—");
                     return `<tr><td>${t.id}</td><td>${side}</td><td>${Number(p).toFixed(4)}</td><td>${Number(a).toFixed(4)}</td><td>${time}</td></tr>`;
                 }).join('') || '<tr><td colspan="5">No trades in testnet account.</td></tr>';
             } else {
