@@ -46,6 +46,12 @@
     tr:last-child td { border-bottom: none; }
     h2 { font-size: 15px; margin-bottom: 8px; color: var(--heading); }
     .refresh-note { font-size: 11px; color: var(--text-dim); margin-bottom: 16px; }
+    .subtab-bar { display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:0; }
+    .subtab-btn { background:var(--bg-sub); color:var(--text-dim); border:none; border-radius:6px 6px 0 0; padding:8px 16px; cursor:pointer; font-size:13px; transition: background 0.2s, color 0.2s; border-bottom:2px solid transparent; }
+    .subtab-btn:hover { color:var(--text); background:var(--bg-card); }
+    .subtab-btn.active { color:var(--green); font-weight:700; border-bottom:2px solid var(--green); background:var(--bg-card); }
+    .tn-subtab { display:none; }
+    .tn-subtab.active { display:block; }
     .tzbtn { background:var(--bg-sub); color:var(--text-dim); border:none; border-radius:4px; padding:3px 8px; cursor:pointer; }
     .tzbtn.on { background:var(--green); color:var(--on-accent); font-weight:700; }
     #themeSel { background:var(--bg-sub); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:3px 6px; cursor:pointer; }
@@ -190,21 +196,33 @@
     </div>
     <div id="tnStatus" style="font-size:13px; margin-bottom:12px;"></div>
 
-    <h2>💰 Exchange Balances (BTC & USDT only)</h2>
-    <table><thead><tr><th>Asset</th><th>Total</th></tr></thead><tbody id="tnBalances"></tbody></table>
+    <div class="subtab-bar">
+        <button class="subtab-btn active" onclick="showTnSubTab(1)">Overview</button>
+        <button class="subtab-btn" onclick="showTnSubTab(2)">Closed Trades</button>
+        <button class="subtab-btn" onclick="showTnSubTab(3)">Exchange Trades</button>
+    </div>
 
-    <h2>🤖 Bot Wallet (mirrored in testnet.db)</h2>
-    <table><thead><tr><th>Asset</th><th>Balance</th></tr></thead><tbody id="tnWallet"></tbody></table>
+    <div id="tnSubTab1" class="tn-subtab active">
+        <h2>💰 Exchange Balances (BTC & USDT only)</h2>
+        <table><thead><tr><th>Asset</th><th>Total</th></tr></thead><tbody id="tnBalances"></tbody></table>
 
-    <h2>🟢 Bot Open Positions</h2>
-    <table><thead><tr><th>ID</th><th>Pair</th><th>Buy Price</th><th>Amount</th><th>TP</th><th>SL</th><th>Opened</th><th>Current</th><th>PnL%</th></tr></thead><tbody id="tnPositions"></tbody></table>
+        <h2>🤖 Bot Wallet (mirrored in testnet.db)</h2>
+        <table><thead><tr><th>Asset</th><th>Balance</th></tr></thead><tbody id="tnWallet"></tbody></table>
 
-    <h2>📜 Bot Closed Trades</h2>
-    <table><thead><tr><th>ID</th><th>Pair</th><th>Buy</th><th>Sell</th><th>PnL</th><th>Reason</th><th>Opened</th><th>Closed</th><th>Result</th></tr></thead><tbody id="tnTrades"></tbody></table>
+        <h2>🟢 Bot Open Positions</h2>
+        <table><thead><tr><th>ID</th><th>Pair</th><th>Buy Price</th><th>Amount</th><th>TP</th><th>SL</th><th>Opened</th><th>Current</th><th>PnL%</th></tr></thead><tbody id="tnPositions"></tbody></table>
+    </div>
 
-    <h2>📚 Testnet Exchange Trades</h2>
-    <p class="sub" style="font-size:11px;color:var(--text-dim);">Live from Binance testnet API (fetchMyTrades — account's own fills)</p>
-    <table><thead><tr><th>TID</th><th>Side</th><th>Price</th><th>Amount</th><th>Time</th></tr></thead><tbody id="tnExTrades"></tbody></table>
+    <div id="tnSubTab2" class="tn-subtab">
+        <h2>📜 Bot Closed Trades</h2>
+        <table><thead><tr><th>ID</th><th>Pair</th><th>Buy</th><th>Sell</th><th>PnL</th><th>Reason</th><th>Opened</th><th>Closed</th><th>Result</th></tr></thead><tbody id="tnTrades"></tbody></table>
+    </div>
+
+    <div id="tnSubTab3" class="tn-subtab">
+        <h2>📚 Testnet Exchange Trades</h2>
+        <p class="sub" style="font-size:11px;color:var(--text-dim);">Live from Binance testnet API (fetchMyTrades — account's own fills)</p>
+        <table><thead><tr><th>TID</th><th>Side</th><th>Price</th><th>Amount</th><th>Time</th></tr></thead><tbody id="tnExTrades"></tbody></table>
+    </div>
 </div>
 
 <div id="tabChart" style="display:none;">
@@ -359,6 +377,22 @@ function toggleParent(name) {
         localStorage.setItem('parentTestnet', expanded);
     }
 }
+
+// ---- Testnet sub-tabs ----
+function showTnSubTab(n) {
+    for (let i = 1; i <= 3; i++) {
+        const pane = document.getElementById('tnSubTab' + i);
+        if (pane) pane.classList.toggle('active', i === n);
+    }
+    document.querySelectorAll('.subtab-btn').forEach((btn, idx) => {
+        btn.classList.toggle('active', idx === n - 1);
+    });
+    localStorage.setItem('tnSubTab', n);
+}
+(function() {
+    const saved = Number(localStorage.getItem('tnSubTab')) || 1;
+    if (saved >= 1 && saved <= 3) showTnSubTab(saved);
+})();
 // Restore parent state on load
 (function() {
     const savedParentTestnet = localStorage.getItem('parentTestnet');
