@@ -32,7 +32,7 @@
         --text: #e6e9ce; --text-dim: #928374; --heading: #ebdfab;
         --green: #fabd2f; --red: #ea6962; --yellow: #f0c54c; --on-accent: #282828;
     }
-    body { font-family: -apple-system, 'Segoe UI', Roboto, monospace; background: var(--bg); color: var(--text); padding: 24px; }
+    body { font-family: -apple-system, 'Segoe UI', Roboto, monospace; background: var(--bg); color: var(--text); padding: 0; overflow-x: hidden; }
     h1 { font-size: 20px; margin-bottom: 4px; }
     .sub { color: var(--text-dim); font-size: 12px; margin-bottom: 20px; }
     .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
@@ -46,21 +46,63 @@
     tr:last-child td { border-bottom: none; }
     h2 { font-size: 15px; margin-bottom: 8px; color: var(--heading); }
     .refresh-note { font-size: 11px; color: var(--text-dim); margin-bottom: 16px; }
-    button.tab { background:var(--bg-sub); color:var(--text-dim); border:1px solid var(--border); border-radius:6px; padding:6px 14px; font-size:13px; cursor:pointer; }
-    button.tab.active { background:var(--green); color:var(--on-accent); border-color:var(--green); font-weight:700; }
     .tzbtn { background:var(--bg-sub); color:var(--text-dim); border:none; border-radius:4px; padding:3px 8px; cursor:pointer; }
     .tzbtn.on { background:var(--green); color:var(--on-accent); font-weight:700; }
     #themeSel { background:var(--bg-sub); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:3px 6px; cursor:pointer; }
+    #sideNav {
+        position: fixed; left: 0; top: 0; z-index: 100;
+        width: 250px; min-height: 100vh;
+        background: var(--bg-card); border-right: 1px solid var(--border);
+        transition: width 0.3s ease;
+        display: flex; flex-direction: column;
+    }
+    #sideNav.collapsed { width: 60px; }
+    .nav-header { padding: 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+    .hamburger { background: none; border: none; color: var(--text); font-size: 20px; cursor: pointer; padding: 4px 8px; }
+    .nav-items { flex: 1; padding: 8px 0; }
+    .nav-item {
+        display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+        cursor: pointer; color: var(--text-dim);
+        transition: background 0.2s, color 0.2s;
+        white-space: nowrap; overflow: hidden;
+    }
+    .nav-item:hover { background: var(--bg-sub); color: var(--text); }
+    .nav-item.active { color: var(--green); font-weight: 700; }
+    .nav-icon { font-size: 18px; min-width: 24px; text-align: center; }
+    .nav-label { font-size: 13px; transition: opacity 0.2s; }
+    #sideNav.collapsed .nav-label { opacity: 0; width: 0; overflow: hidden; }
+    #mainContent { margin-left: 250px; padding: 24px; transition: margin-left 0.3s ease; }
+    #mainContent.shifted { margin-left: 60px; }
+    @media (max-width: 768px) {
+        #sideNav { width: 60px; }
+        #sideNav .nav-label { opacity: 0; width: 0; overflow: hidden; }
+        #mainContent { margin-left: 60px; }
+    }
 </style>
 </head>
 <body>
+<nav id="sideNav">
+    <div class="nav-header">
+        <button class="hamburger" onclick="toggleNav()" title="Toggle navigation">☰</button>
+    </div>
+    <div class="nav-items">
+        <div id="navBtnReport" class="nav-item active" onclick="showTab('report')" title="Paper Trading">
+            <span class="nav-icon">📈</span>
+            <span class="nav-label">Paper Trading</span>
+        </div>
+        <div id="navBtnTestnet" class="nav-item" onclick="showTab('testnet')" title="Binance Testnet">
+            <span class="nav-icon">🅱️</span>
+            <span class="nav-label">Binance Testnet</span>
+        </div>
+        <div id="navBtnBinance" class="nav-item" onclick="showTab('binance')" title="Binance Account">
+            <span class="nav-icon">🅱️</span>
+            <span class="nav-label">Binance Account</span>
+        </div>
+    </div>
+</nav>
+<div id="mainContent">
 <h1>🖥️ CryptoPanzer — Trade Report Dashboard</h1>
 <div class="sub">Read-only view of the paper trading database · refreshes every 30s · <span id="lastUpdate">loading…</span></div>
-<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
-    <button id="tabBtnReport" class="tab" onclick="showTab('report')">📈 Paper Trading</button>
-    <button id="tabBtnTestnet" class="tab" onclick="showTab('testnet')">🅑 Binance Testnet</button>
-    <button id="tabBtnBinance" class="tab" onclick="showTab('binance')">🅑 Binance Account</button>
-</div>
 
 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
     <div id="strategyBadge" class="card" style="padding:8px 14px; font-size:12px;">⚙️ Strategy: loading…</div>
@@ -139,6 +181,7 @@
     <h2>📚 Testnet Exchange Trades</h2>
     <p class="sub" style="font-size:11px;color:var(--text-dim);">Live from Binance testnet API (fetchMyTrades — account's own fills)</p>
     <table><thead><tr><th>TID</th><th>Side</th><th>Price</th><th>Amount</th><th>Time</th></tr></thead><tbody id="tnExTrades"></tbody></table>
+</div>
 </div>
 
 <script>
@@ -252,13 +295,29 @@ function showTab(t) {
     document.getElementById('tabReport').style.display = t === 'report' ? '' : 'none';
     document.getElementById('tabTestnet').style.display = t === 'testnet' ? '' : 'none';
     document.getElementById('tabBinance').style.display = t === 'binance' ? '' : 'none';
-    document.getElementById('tabBtnReport').classList.toggle('active', t === 'report');
-    document.getElementById('tabBtnTestnet').classList.toggle('active', t === 'testnet');
-    document.getElementById('tabBtnBinance').classList.toggle('active', t === 'binance');
+    document.getElementById('navBtnReport').classList.toggle('active', t === 'report');
+    document.getElementById('navBtnTestnet').classList.toggle('active', t === 'testnet');
+    document.getElementById('navBtnBinance').classList.toggle('active', t === 'binance');
     if (t === 'binance') loadBinance();
     if (t === 'testnet') loadTestnet();
 }
-document.getElementById('tabBtnReport').classList.add('active');
+
+// ---- Side nav toggle ----
+function toggleNav() {
+    document.getElementById('sideNav').classList.toggle('collapsed');
+    document.getElementById('mainContent').classList.toggle('shifted');
+    localStorage.setItem('navCollapsed', document.getElementById('sideNav').classList.contains('collapsed'));
+}
+// Initialize side nav state on load
+(function() {
+    const isSmallScreen = window.innerWidth <= 768;
+    const savedCollapsed = localStorage.getItem('navCollapsed');
+    const shouldBeCollapsed = isSmallScreen || savedCollapsed === 'true';
+    if (shouldBeCollapsed) {
+        document.getElementById('sideNav').classList.add('collapsed');
+        document.getElementById('mainContent').classList.add('shifted');
+    }
+})();
 
 // Epoch → string in selected timezone (server mode uses server offset; WIB = UTC+7)
 function fmtEpoch(ms) {
