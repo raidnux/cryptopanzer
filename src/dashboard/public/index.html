@@ -73,10 +73,23 @@
     #sideNav.collapsed .nav-label { opacity: 0; width: 0; overflow: hidden; }
     #mainContent { margin-left: 250px; padding: 24px; transition: margin-left 0.3s ease; }
     #mainContent.shifted { margin-left: 60px; }
+    .nav-parent { cursor: pointer; }
+    .nav-parent .nav-caret { font-size: 10px; transition: transform 0.2s; display: inline-block; min-width: 14px; text-align: center; }
+    .nav-parent.expanded .nav-caret { transform: rotate(90deg); }
+    .nav-children { display: none; }
+    .nav-parent.expanded .nav-children { display: block; }
+    .nav-child { padding-left: 40px; font-size: 12px; }
+    .chart-tooltip {
+        position: fixed; pointer-events: none; z-index: 200;
+        background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+        padding: 8px 12px; font-size: 12px; color: var(--text);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: none;
+    }
     @media (max-width: 768px) {
         #sideNav { width: 60px; }
         #sideNav .nav-label { opacity: 0; width: 0; overflow: hidden; }
         #mainContent { margin-left: 60px; }
+        .nav-child { padding-left: 0; }
     }
 </style>
 </head>
@@ -90,9 +103,20 @@
             <span class="nav-icon">📈</span>
             <span class="nav-label">Paper Trading</span>
         </div>
-        <div id="navBtnTestnet" class="nav-item" onclick="showTab('testnet')" title="Binance Testnet">
+        <div id="navBtnTestnetParent" class="nav-item nav-parent" onclick="toggleParent('testnet')" title="Binance Testnet">
             <span class="nav-icon">🅱️</span>
             <span class="nav-label">Binance Testnet</span>
+            <span class="nav-caret">▸</span>
+        </div>
+        <div id="navChildrenTestnet" class="nav-children">
+            <div id="navBtnTestnet" class="nav-item nav-child" onclick="showTab('testnet')" title="Overview">
+                <span class="nav-icon">🅱️</span>
+                <span class="nav-label">Overview</span>
+            </div>
+            <div id="navBtnChart" class="nav-item nav-child" onclick="showTab('chart')" title="Trade Chart">
+                <span class="nav-icon">📈</span>
+                <span class="nav-label">Trade Chart</span>
+            </div>
         </div>
         <div id="navBtnBinance" class="nav-item" onclick="showTab('binance')" title="Binance Account">
             <span class="nav-icon">🅱️</span>
@@ -181,6 +205,15 @@
     <h2>📚 Testnet Exchange Trades</h2>
     <p class="sub" style="font-size:11px;color:var(--text-dim);">Live from Binance testnet API (fetchMyTrades — account's own fills)</p>
     <table><thead><tr><th>TID</th><th>Side</th><th>Price</th><th>Amount</th><th>Time</th></tr></thead><tbody id="tnExTrades"></tbody></table>
+</div>
+
+<div id="tabChart" style="display:none;">
+    <h2>📈 Bot Trade History Chart (testnet)</h2>
+    <p class="sub" style="font-size:11px;color:var(--text-dim);margin-bottom:16px;">Buy/sell executions from Bot Closed Trades · current price live</p>
+    <div id="chartContainer" style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;position:relative;">
+        <div id="chartEmpty" style="text-align:center;padding:40px;color:var(--text-dim);">No closed trades yet</div>
+        <svg id="tradeChart" style="display:none;width:100%;height:400px;"></svg>
+    </div>
 </div>
 </div>
 
@@ -290,17 +323,50 @@ setInterval(load, 30000);
 
 // ---- Binance tab ----
 let currentTab = 'report';
+let testnetTrades = [];
+let currentTestnetPrice = null;
 function showTab(t) {
     currentTab = t;
     document.getElementById('tabReport').style.display = t === 'report' ? '' : 'none';
     document.getElementById('tabTestnet').style.display = t === 'testnet' ? '' : 'none';
     document.getElementById('tabBinance').style.display = t === 'binance' ? '' : 'none';
+    document.getElementById('tabChart').style.display = t === 'chart' ? '' : 'none';
     document.getElementById('navBtnReport').classList.toggle('active', t === 'report');
     document.getElementById('navBtnTestnet').classList.toggle('active', t === 'testnet');
+    document.getElementById('navBtnChart').classList.toggle('active', t === 'chart');
     document.getElementById('navBtnBinance').classList.toggle('active', t === 'binance');
+    // parent active when any child active
+    const testnetParent = document.getElementById('navBtnTestnetParent');
+    if (t === 'testnet' || t === 'chart') {
+        testnetParent.classList.add('active');
+        testnetParent.classList.add('expanded');
+        document.getElementById('navChildrenTestnet').style.display = 'block';
+        localStorage.setItem('parentTestnet', 'true');
+    } else {
+        testnetParent.classList.remove('active');
+    }
     if (t === 'binance') loadBinance();
-    if (t === 'testnet') loadTestnet();
+    if (t === 'testnet' || t === 'chart') loadTestnet();
+    if (t === 'chart') renderChart();
 }
+
+// ---- Parent toggle ----
+function toggleParent(name) {
+    if (name === 'testnet') {
+        const el = document.getElementById('navBtnTestnetParent');
+        const expanded = el.classList.toggle('expanded');
+        document.getElementById('navChildrenTestnet').style.display = expanded ? 'block' : 'none';
+        localStorage.setItem('parentTestnet', expanded);
+    }
+}
+// Restore parent state on load
+(function() {
+    const savedParentTestnet = localStorage.getItem('parentTestnet');
+    if (savedParentTestnet === 'true') {
+        document.getElementById('navBtnTestnetParent').classList.add('expanded');
+        document.getElementById('navChildrenTestnet').style.display = 'block';
+    }
+})();
 
 // ---- Side nav toggle ----
 function toggleNav() {
@@ -380,6 +446,7 @@ async function loadTestnet() {
         el('tnPrice').textContent = d.price != null
             ? '$' + Number(d.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
             : '—';
+        currentTestnetPrice = d.price != null ? Number(d.price) : null;
         const s = d.bot && d.bot.summary;
         if (s) {
             el('tnNetPnl').textContent = (s.netPnl >= 0 ? '+' : '') + fmt(s.netPnl);
@@ -435,6 +502,8 @@ async function loadTestnet() {
                     `<td>${fmtDate(t.open_time)}</td><td>${fmtDate(t.timestamp)}</td><td>${win ? '✅ WIN' : '❌ LOSS'}</td></tr>`;
             }).join('')
             : '<tr><td colspan="9">No closed trades yet.</td></tr>';
+        testnetTrades = d.bot.trades || [];
+        if (currentTab === 'chart') renderChart();
 
         // also fetch live trades from Binance testnet API
         try {
@@ -458,7 +527,162 @@ async function loadTestnet() {
     }
 }
 
-setInterval(() => { if (currentTab === 'testnet') loadTestnet(); }, 30000);
+setInterval(() => { if (currentTab === 'testnet' || currentTab === 'chart') loadTestnet(); }, 30000);
+
+// ---- Trade History Chart ----
+function renderChart() {
+    const svg = document.getElementById('tradeChart');
+    const empty = document.getElementById('chartEmpty');
+    const tooltip = document.getElementById('chartTooltip');
+    try {
+        if (!testnetTrades || testnetTrades.length === 0) {
+            svg.style.display = 'none';
+            empty.style.display = 'block';
+            if (tooltip) tooltip.style.display = 'none';
+            return;
+        }
+        svg.style.display = 'block';
+        empty.style.display = 'none';
+
+        const rect = svg.getBoundingClientRect();
+        const W = rect.width || 800;
+        const H = 400;
+        const pad = { top: 20, right: 60, bottom: 40, left: 20 };
+        const cW = W - pad.left - pad.right;
+        const cH = H - pad.top - pad.bottom;
+
+        // Build data points: each trade has buyTime, sellTime, buyPrice, sellPrice, pnlPct
+        const points = [];
+        for (let i = 0; i < testnetTrades.length; i++) {
+            const t = testnetTrades[i];
+            const buyTime = t.open_time ? new Date(t.open_time).getTime() : null;
+            const sellTime = t.timestamp ? new Date(t.timestamp).getTime() : null;
+            const buyP = Number(t.buy_price) || 0;
+            const sellP = Number(t.sell_price) || 0;
+            const pnl = t.profit_loss != null ? Number(t.profit_loss) : 0;
+            if (buyTime && sellTime && buyP > 0 && sellP > 0) {
+                points.push({ buyTime, sellTime, buyP, sellP, pnl, id: t.id, pair: t.pair, reason: t.close_reason });
+            }
+        }
+        if (points.length === 0) {
+            svg.style.display = 'none';
+            empty.style.display = 'block';
+            return;
+        }
+
+        // Compute axes
+        let allTimes = [];
+        let allPrices = [];
+        for (const p of points) {
+            allTimes.push(p.buyTime, p.sellTime);
+            allPrices.push(p.buyP, p.sellP);
+        }
+        if (currentTestnetPrice != null) allPrices.push(currentTestnetPrice);
+        const tMin = Math.min(...allTimes);
+        const tMax = Math.max(...allTimes);
+        const pMin = Math.min(...allPrices);
+        const pMax = Math.max(...allPrices);
+        const pPad = (pMax - pMin) * 0.15 || pMax * 0.05 || 100;
+        const yMin = pMin - pPad;
+        const yMax = pMax + pPad;
+        const xMin = tMin;
+        const xMax = tMax || (tMin + 1);
+
+        const xScale = t => pad.left + ((t - xMin) / (xMax - xMin || 1)) * cW;
+        const yScale = p => pad.top + cH - ((p - yMin) / (yMax - yMin || 1)) * cH;
+
+        // Get theme colors
+        const cs = getComputedStyle(document.documentElement);
+        const green = cs.getPropertyValue('--green').trim();
+        const red = cs.getPropertyValue('--red').trim();
+        const yellow = cs.getPropertyValue('--yellow').trim();
+        const border = cs.getPropertyValue('--border').trim();
+        const textDim = cs.getPropertyValue('--text-dim').trim();
+        const text = cs.getPropertyValue('--text').trim();
+
+        let html = '';
+
+        // Gridlines (5 horizontal)
+        for (let i = 0; i <= 4; i++) {
+            const p = yMin + (yMax - yMin) * (i / 4);
+            const y = yScale(p);
+            html += `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" stroke="${border}" stroke-width="0.5" stroke-dasharray="4,4"/>`;
+            html += `<text x="${pad.left - 4}" y="${y + 4}" text-anchor="end" fill="${textDim}" font-size="10">${fmt(p)}</text>`;
+        }
+
+        // X-axis labels (4-5 time labels)
+        const numXLabels = 5;
+        for (let i = 0; i < numXLabels; i++) {
+            const t = xMin + (xMax - xMin) * (i / (numXLabels - 1));
+            const x = xScale(t);
+            const d = new Date(t);
+            const label = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+            html += `<text x="${x}" y="${H - 8}" text-anchor="middle" fill="${textDim}" font-size="10">${label}</text>`;
+        }
+
+        // Trade connectors (buy→sell lines)
+        for (const p of points) {
+            const x1 = xScale(p.buyTime);
+            const y1 = yScale(p.buyP);
+            const x2 = xScale(p.sellTime);
+            const y2 = yScale(p.sellP);
+            html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${border}" stroke-width="1" opacity="0.6"/>`;
+        }
+
+        // Trade dots with hover data
+        for (let i = 0; i < points.length; i++) {
+            const p = points[i];
+            const buyX = xScale(p.buyTime);
+            const buyY = yScale(p.buyP);
+            const sellX = xScale(p.sellTime);
+            const sellY = yScale(p.sellP);
+            const buyDate = new Date(p.buyTime).toLocaleString();
+            const sellDate = new Date(p.sellTime).toLocaleString();
+            const pnlPct = ((p.sellP - p.buyP) / p.buyP * 100).toFixed(2);
+            const pnlClass = p.pnl >= 0 ? 'green' : 'red';
+            // Buy dot
+            html += `<circle cx="${buyX}" cy="${buyY}" r="5" fill="${green}" stroke="none" style="cursor:pointer" data-tip="BUY #${p.id} ${p.pair}&#10;${buyDate}&#10;Price: ${fmt(p.buyP)}"/>`;
+            // Sell dot
+            html += `<circle cx="${sellX}" cy="${sellY}" r="5" fill="${red}" stroke="none" style="cursor:pointer" data-tip="SELL #${p.id} ${p.pair}&#10;${sellDate}&#10;Price: ${fmt(p.sellP)}&#10;PnL: ${pnlPct}% (${p.reason})"/>`;
+        }
+
+        // Live price line
+        if (currentTestnetPrice != null) {
+            const y = yScale(currentTestnetPrice);
+            html += `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" stroke="${yellow}" stroke-width="1.5" stroke-dasharray="6,4"/>`;
+            html += `<text x="${W - pad.right + 4}" y="${y + 4}" fill="${yellow}" font-size="11" font-weight="700">$${Number(currentTestnetPrice).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</text>`;
+        }
+
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+        svg.innerHTML = html;
+
+        // Tooltip handling
+        if (!tooltip) {
+            const t = document.createElement('div');
+            t.className = 'chart-tooltip';
+            t.id = 'chartTooltip';
+            document.getElementById('chartContainer').appendChild(t);
+        }
+        const tip = document.getElementById('chartTooltip');
+        svg.querySelectorAll('circle[data-tip]').forEach(c => {
+            c.addEventListener('mouseenter', e => {
+                tip.innerHTML = c.getAttribute('data-tip').replace(/&#10;/g, '<br>');
+                tip.style.display = 'block';
+                tip.style.left = (e.clientX + 12) + 'px';
+                tip.style.top = (e.clientY - 10) + 'px';
+            });
+            c.addEventListener('mousemove', e => {
+                tip.style.left = (e.clientX + 12) + 'px';
+                tip.style.top = (e.clientY - 10) + 'px';
+            });
+            c.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+        });
+    } catch (e) {
+        console.warn('Chart render error:', e);
+        svg.style.display = 'none';
+        empty.style.display = 'block';
+    }
+}
 
 
 </script>
