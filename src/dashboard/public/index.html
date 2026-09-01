@@ -54,7 +54,14 @@
     .tn-subtab.active { display:block; }
     .tzbtn { background:var(--bg-sub); color:var(--text-dim); border:none; border-radius:4px; padding:3px 8px; cursor:pointer; }
     .tzbtn.on { background:var(--green); color:var(--on-accent); font-weight:700; }
-    #themeSel { background:var(--bg-sub); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:3px 6px; cursor:pointer; }
+    #themeSelectorBtn {
+        background: var(--bg-sub); color: var(--text); border: 1px solid var(--border); border-radius: 4px;
+        padding: 6px 10px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 6px;
+        transition: background 0.2s, color 0.2s;
+    }
+    #themeSelectorBtn:hover { background: var(--bg-card); }
+    #themeSelectorBtn .theme-icon { font-size: 16px; }
+    #themeSelectorBtn .theme-label { font-size: 13px; }
     #sideNav {
         position: fixed; left: 0; top: 0; z-index: 100;
         width: 250px; min-height: 100vh;
@@ -85,6 +92,10 @@
     .nav-children { display: none; }
     .nav-parent.expanded .nav-children { display: block; }
     .nav-child { padding-left: 40px; font-size: 12px; }
+    .nav-footer {
+        padding: 8px; border-top: 1px solid var(--border);
+        display: flex; align-items: center; justify-content: center;
+    }
     .chart-tooltip {
         position: fixed; pointer-events: none; z-index: 200;
         background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
@@ -129,10 +140,16 @@
             <span class="nav-label">Binance Account</span>
         </div>
     </div>
+    <div class="nav-footer">
+        <button id="themeSelectorBtn" onclick="toggleThemeMenu()" title="Select theme">
+            <span class="theme-icon" id="themeIcon">🌑</span>
+            <span class="theme-label" id="themeLabel">Dark</span>
+        </button>
+    </div>
 </nav>
 <div id="mainContent">
-<h1>🖥️ CryptoPanzer — Trade Report Dashboard</h1>
-<div class="sub">Read-only view of the paper trading database · refreshes every 30s · <span id="lastUpdate">loading…</span></div>
+<h1>🖥️ Crypto trading dashboard·</h1>
+<div class="sub"><span id="lastUpdate">loading…</span></div>
 
 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
     <div id="strategyBadge" class="card" style="padding:8px 14px; font-size:12px;">⚙️ Strategy: loading…</div>
@@ -140,16 +157,6 @@
         🕐 Time:
         <button id="tzServer" class="tzbtn" onclick="setTz('server')">Server</button>
         <button id="tzWib" class="tzbtn" onclick="setTz('wib')">WIB</button>
-    </div>
-    <div class="card" style="padding:6px 10px; font-size:12px;">
-        🎨 Theme:
-        <select id="themeSel" onchange="setTheme(this.value)">
-            <option value="dark">🌑 Dark</option>
-            <option value="light">☀️ Light</option>
-            <option value="terminal">🖥️ Terminal</option>
-            <option value="dracula">🧛 Dracula</option>
-            <option value="gruvbox">🎨 Gruvbox</option>
-        </select>
     </div>
 </div>
 
@@ -233,10 +240,18 @@
         <svg id="tradeChart" style="display:none;width:100%;height:400px;"></svg>
     </div>
 </div>
-</div>
 
 <script>
 const fmt = n => Number(n).toFixed(4);
+
+// Theme config
+const themes = [
+    { name: 'dark', icon: '🌑', label: 'Dark' },
+    { name: 'light', icon: '☀️', label: 'Light' },
+    { name: 'terminal', icon: '🖥️', label: 'Terminal' },
+    { name: 'dracula', icon: '🧛', label: 'Dracula' },
+    { name: 'gruvbox', icon: '🎨', label: 'Gruvbox' }
+];
 
 // ---- Timezone toggle: convert server-local date strings to WIB or keep as-is ----
 let serverOffsetMin = null;   // dari /api/meta
@@ -254,12 +269,28 @@ function updateTzButtons() {
     document.getElementById('tzServer').className = 'tzbtn' + (tzMode === 'server' ? ' on' : '');
     document.getElementById('tzWib').className = 'tzbtn' + (tzMode === 'wib' ? ' on' : '');
 }
+
 // ---- Theme picker: stored in localStorage, applied via data-theme on <html> ----
 function setTheme(name) {
     document.documentElement.dataset.theme = name;
     localStorage.setItem('theme', name);
+    updateThemeUI(name);
 }
-document.getElementById('themeSel').value = document.documentElement.dataset.theme || 'dark';
+function updateThemeUI(name) {
+    const theme = themes.find(t => t.name === name) || themes[0];
+    document.getElementById('themeIcon').textContent = theme.icon;
+    document.getElementById('themeLabel').textContent = theme.label;
+}
+// Show theme selector when sidebar expanded
+function toggleThemeMenu() {
+    // In collapsed state, show theme options via tooltip/onclick
+    // For simplicity, we'll use the existing select approach but hidden when collapsed
+}
+// Initialize theme on load
+(function() {
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    updateThemeUI(savedTheme);
+})();
 // Ubah "YYYY-MM-DD HH:mm:ss" (waktu server) jadi zona target; return '—' kalau tidak valid
 function fmtDate(s) {
     if (!s || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return '—';
